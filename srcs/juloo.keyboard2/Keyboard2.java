@@ -4,9 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.ColorDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.os.Build.VERSION;
 import android.os.Handler;
@@ -145,8 +143,8 @@ public class Keyboard2 extends InputMethodService
     Logs.set_debug_logs(getResources().getBoolean(R.bool.debug_logs));
     refreshSubtypeImm();
     create_keyboard_view();
-    _floating_manager = new FloatingKeyboardManager(this, _config);
     ClipboardHistoryService.on_startup(this, _keyeventhandler);
+    _floating_manager = new FloatingKeyboardManager(this, _config);
     _foldStateTracker.setChangedCallback(() -> { refresh_config(); });
   }
 
@@ -281,6 +279,14 @@ public class Keyboard2 extends InputMethodService
       ((ViewGroup)parent).removeView(v);
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
+    // In floating mode, translate the keyboard container to its position.
+    if (_floating_manager != null)
+    {
+      if (_config.floating_keyboard)
+        _floating_manager.applyPosition(v);
+      else
+        _floating_manager.disableFloating(v);
+    }
     v.requestApplyInsets();
   }
 
@@ -292,7 +298,6 @@ public class Keyboard2 extends InputMethodService
 
   private void updateSoftInputWindowLayoutParams() {
     final Window window = getWindow().getWindow();
-    boolean floating = _config != null && _config.floating_keyboard;
     // On API >= 35, Keyboard2View behaves as edge-to-edge
     // APIs 30 to 34 have visual artifact when edge-to-edge is enabled
     if (VERSION.SDK_INT >= 35)
@@ -304,51 +309,16 @@ public class Keyboard2 extends InputMethodService
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
     }
-
-    if (floating)
-    {
-      // Floating mode: the window itself becomes the floating keyboard.
-      // Set all window LayoutParams in ONE setAttributes call to avoid
-      // intermediate states. Width/height/gravity/x/y all set together.
-      window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-      if (_floating_manager != null)
-        _floating_manager.applyFloatingWindow(window);
-      // Also set height to WRAP_CONTENT (applyFloatingWindow sets width, but
-      // height may still be MATCH_PARENT from onConfigureWindow)
-      WindowManager.LayoutParams lp = window.getAttributes();
-      if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT)
-      {
-        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-        window.setAttributes(lp);
-      }
-    }
-    else
-    {
-      // Normal mode: window is MATCH_PARENT width, WRAP_CONTENT height, BOTTOM
-      if (_floating_manager != null)
-        _floating_manager.disableFloatingWindow(window);
-      // Ensure height is WRAP_CONTENT for normal mode too
-      updateLayoutHeightOf(window, ViewGroup.LayoutParams.WRAP_CONTENT);
-    }
-
+    updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
+
     updateLayoutHeightOf(
             (View) inputArea.getParent(),
             isFullscreenMode()
                     ? ViewGroup.LayoutParams.MATCH_PARENT
                     : ViewGroup.LayoutParams.WRAP_CONTENT);
-    updateLayoutGravityOf((View) inputArea.getParent(),
-            floating ? Gravity.TOP : Gravity.BOTTOM);
+    updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
 
-    // In floating mode, make backgrounds transparent so app shows through
-    if (floating)
-    {
-      if (inputArea != null)
-        inputArea.setBackgroundResource(0);
-      View parent = (View) inputArea.getParent();
-      if (parent != null)
-        parent.setBackgroundResource(0);
-    }
   }
 
   private static void updateLayoutHeightOf(final Window window, final int layoutHeight) {
@@ -423,8 +393,6 @@ public class Keyboard2 extends InputMethodService
   public void onComputeInsets(InputMethodService.Insets outInsets)
   {
     super.onComputeInsets(outInsets);
-    // In floating mode, restrict touchable area to the keyboard container only
-    // so touches pass through to the app behind.
     if (_floating_manager != null && _config.floating_keyboard)
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
