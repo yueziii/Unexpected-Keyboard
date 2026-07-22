@@ -160,6 +160,12 @@ public class Keyboard2 extends InputMethodService
   private void create_keyboard_view()
   {
     _keyboard_container_view = (ViewGroup)inflate_view(R.layout.keyboard);
+    // [inflate_view] passes null as root, so the inflated view has no
+    // LayoutParams. Create one so floating width can be set later.
+    if (_keyboard_container_view.getLayoutParams() == null)
+      _keyboard_container_view.setLayoutParams(
+        new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+          ViewGroup.LayoutParams.WRAP_CONTENT));
     _keyboard_layout_view = (Keyboard2View)_keyboard_container_view.findViewById(R.id.keyboard_view);
     _candidates_view = (CandidatesView)_keyboard_container_view.findViewById(R.id.candidates_view);
     if (_floating_manager != null)
@@ -280,23 +286,20 @@ public class Keyboard2 extends InputMethodService
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
     // In floating mode, constrain the width of whatever view is shown
-    // (keyboard, emoji pane, clipboard pane) and re-apply the position.
+    // (keyboard, emoji pane, clipboard pane). Window position is handled by
+    // [updateSoftInputWindowLayoutParams] via the window's own LayoutParams.
     if (_floating_manager != null && _config.floating_keyboard)
     {
       int width = _floating_manager.getKeyboardWidthPx();
       android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
-      if (lp != null && lp.width != width)
-      {
+      if (lp == null)
+        lp = new android.view.ViewGroup.LayoutParams(width,
+          ViewGroup.LayoutParams.WRAP_CONTENT);
+      else if (lp.width != width)
         lp.width = width;
-        v.setLayoutParams(lp);
-      }
-      // Position the view at the saved floating coordinates.
-      v.setX(_config.floating_pos_x == Float.MIN_VALUE
-          ? Math.max(0, (_floating_manager.getScreenWidthPx() - width) / 2.f)
-          : _config.floating_pos_x);
-      v.setY(_config.floating_pos_y == Float.MIN_VALUE
-          ? _floating_manager.getScreenHeightPx() * 0.4f
-          : _config.floating_pos_y);
+      v.setLayoutParams(lp);
+      // Re-apply window position in case the view size changed.
+      _floating_manager.applyFloatingWindowLayout(getWindow().getWindow());
     }
     v.requestApplyInsets();
   }
@@ -320,23 +323,35 @@ public class Keyboard2 extends InputMethodService
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
     }
-    updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
 
-    if (_config.floating_keyboard)
+    if (_config.floating_keyboard && _floating_manager != null)
     {
-      // Floating mode: the input area wraps content and is positioned at the
-      // top-left so that the container's [setX]/[setY] map to absolute
-      // screen coordinates.
+      // Floating mode: the IME window itself becomes a small, freely
+      // positioned window. The window height is WRAP_CONTENT so it only
+      // covers the keyboard area (not the whole screen), letting touches
+      // pass through to the app behind it. Position is controlled via the
+      // window's own LayoutParams gravity + x/y.
+      _floating_manager.applyFloatingWindowLayout(window);
+      // inputArea parent wraps content too.
       updateLayoutHeightOf((View) inputArea.getParent(),
           ViewGroup.LayoutParams.WRAP_CONTENT);
       updateLayoutGravityOf((View) inputArea.getParent(),
           Gravity.TOP | Gravity.START);
-      if (_floating_manager != null)
-        _floating_manager.applyFloatingWindowLayout(window);
     }
     else
     {
+      // Reset window params that floating mode may have changed.
+      WindowManager.LayoutParams lp = window.getAttributes();
+      if (lp != null)
+      {
+        lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+        lp.gravity = Gravity.NO_GRAVITY;
+        lp.x = 0;
+        lp.y = 0;
+        window.setAttributes(lp);
+      }
       updateLayoutHeightOf(
               (View) inputArea.getParent(),
               isFullscreenMode()
@@ -397,7 +412,6 @@ public class Keyboard2 extends InputMethodService
           lp.width = width;
           _keyboard_container_view.setLayoutParams(lp);
         }
-        _floating_manager.applyPosition();
       }
     }
     else
@@ -411,6 +425,9 @@ public class Keyboard2 extends InputMethodService
         lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
         _keyboard_container_view.setLayoutParams(lp);
       }
+      // Reset any translation left over from floating mode.
+      _keyboard_container_view.setX(0);
+      _keyboard_container_view.setY(0);
     }
   }
 
