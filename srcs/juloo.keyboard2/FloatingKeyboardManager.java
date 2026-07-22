@@ -178,18 +178,13 @@ public final class FloatingKeyboardManager
       Log.d(TAG, "computeInsets: container not ready w=" + w + " h=" + h);
       return;
     }
-    int[] loc = new int[2];
-    container.getLocationOnScreen(loc);
-    int left = loc[0];
-    int top = loc[1];
-    int right = left + w;
-    int bottom = top + h;
-    // Clamp all values to screen bounds (negative values cause infinite
-    // onComputeInsets loops as the system tries to resolve them)
-    if (left < 0) left = 0;
-    if (top < 0) top = 0;
-    if (right > _screenWidth) right = _screenWidth;
-    if (bottom > _screenHeight) bottom = _screenHeight;
+    // Compute touchable region from _lastTargetY (the actual visible position)
+    // instead of getLocationOnScreen (which returns negative values due to
+    // translationY moving the container above the window origin).
+    int left = 0;  // container is MATCH_PARENT width
+    int top = (int) Math.max(0, _lastTargetY);
+    int right = Math.min(_screenWidth, w);
+    int bottom = Math.min(_screenHeight, top + h);
     // contentTopInsets tells the system where the IME content starts.
     // In floating mode, the keyboard floats over the app. We set this to
     // the keyboard's actual screen top (the visible top, clamped to >= 0).
