@@ -97,6 +97,14 @@ public final class Config
   int current_layout_wide;
   /** Whether to automatically split the layout. */
   public boolean split_layout;
+  /** Whether the keyboard is displayed as a floating, movable window. */
+  public boolean floating_keyboard = false;
+  /** Width of the floating keyboard, as a percentage of screen width (40-100). */
+  public int floating_keyboard_width = 80;
+  /** Saved X position of the floating keyboard, in pixels. [Float.MIN_VALUE] means unset. */
+  public float floating_pos_x = Float.MIN_VALUE;
+  /** Saved Y position of the floating keyboard, in pixels from the top. [Float.MIN_VALUE] means unset. */
+  public float floating_pos_y = Float.MIN_VALUE;
 
   private Config(SharedPreferences prefs, Resources res,
       Boolean foldableUnfolded, Dictionaries dicts)
@@ -201,6 +209,10 @@ public final class Config
     physical_keyboard_hide = _prefs.getString("physical_keyboard_behavior", "hide").equals("hide");
     float screen_width_dp = dm.widthPixels / dm.density;
     wide_screen = screen_width_dp >= WIDE_DEVICE_THRESHOLD;
+    floating_keyboard = _prefs.getBoolean("floating_keyboard", false);
+    floating_keyboard_width = _prefs.getInt("floating_keyboard_width", 80);
+    floating_pos_x = _prefs.getFloat("floating_pos_x", Float.MIN_VALUE);
+    floating_pos_y = _prefs.getFloat("floating_pos_y", Float.MIN_VALUE);
     split_layout = get_split_layout();
   }
 
@@ -220,6 +232,17 @@ public final class Config
     SharedPreferences.Editor e = _prefs.edit();
     e.putInt("current_layout_portrait", current_layout_narrow);
     e.putInt("current_layout_landscape", current_layout_wide);
+    e.apply();
+  }
+
+  /** Persist the floating keyboard position so it's restored next time. */
+  public void save_floating_pos(float x, float y)
+  {
+    floating_pos_x = x;
+    floating_pos_y = y;
+    SharedPreferences.Editor e = _prefs.edit();
+    e.putFloat("floating_pos_x", x);
+    e.putFloat("floating_pos_y", y);
     e.apply();
   }
 
