@@ -266,6 +266,12 @@ public class Keyboard2View extends View
   {
     DisplayMetrics dm = getContext().getResources().getDisplayMetrics();
     int width = dm.widthPixels;
+    // In floating keyboard mode, the parent may constrain the width to
+    // a percentage of the screen. Respect an EXACTLY width spec.
+    int specMode = android.view.View.MeasureSpec.getMode(wSpec);
+    int specSize = android.view.View.MeasureSpec.getSize(wSpec);
+    if (specMode == android.view.View.MeasureSpec.EXACTLY && specSize > 0 && specSize < width)
+      width = specSize;
     _marginLeft = Math.max(_config.horizontal_margin, _insets_left);
     _marginRight = Math.max(_config.horizontal_margin, _insets_right);
     _marginBottom = _config.margin_bottom + _insets_bottom;

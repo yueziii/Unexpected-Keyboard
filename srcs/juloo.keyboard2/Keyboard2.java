@@ -10,8 +10,6 @@ import android.os.Build.VERSION;
 import android.os.Handler;
 import android.os.IBinder;
 import android.text.InputType;
-import android.util.Log;
-import android.util.LogPrinter;
 import android.view.*;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
@@ -262,7 +260,6 @@ public class Keyboard2 extends InputMethodService
   @Override
   public void onStartInputView(EditorInfo info, boolean restarting)
   {
-    Log.d("FloatingKeyboard", "onStartInputView called, floating=" + _config.floating_keyboard);
     _config.editor_config.refresh(info, getResources());
     refresh_config();
     _currentSpecialLayout = refresh_special_layout();
@@ -275,7 +272,6 @@ public class Keyboard2 extends InputMethodService
   @Override
   public void setInputView(View v)
   {
-    Log.d("FloatingKeyboard", "setInputView called, floating=" + _config.floating_keyboard);
     ViewParent parent = v.getParent();
     if (parent != null && parent instanceof ViewGroup)
       ((ViewGroup)parent).removeView(v);
@@ -414,10 +410,6 @@ public class Keyboard2 extends InputMethodService
     if (_floating_manager != null && _config.floating_keyboard)
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
-    }
-    else
-    {
-      Log.d("FloatingKeyboard", "onComputeInsets: (not floating) contentTopInsets=" + outInsets.contentTopInsets);
     }
   }
 
