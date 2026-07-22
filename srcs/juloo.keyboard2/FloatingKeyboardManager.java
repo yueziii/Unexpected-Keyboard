@@ -28,7 +28,7 @@ public final class FloatingKeyboardManager
   private int _screenHeight;
   private float _posY;
   private float _dragStartRawY;
-  private float _dragStartPosY;
+  private float _dragStartTranslation;
   private boolean _isDragging;
 
   public FloatingKeyboardManager(Keyboard2 ime, Config config)
@@ -68,7 +68,7 @@ public final class FloatingKeyboardManager
   {
     _container = container;
     final float targetY = (_posY == Float.MIN_VALUE) ? _screenHeight * 0.4f : _posY;
-    // Use a layout change listener so we get the correct height after layout.
+    // Use a layout change listener so we get the correct position after layout.
     container.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
       @Override
       public void onLayoutChange(View v, int left, int top, int right, int bottom,
@@ -76,14 +76,24 @@ public final class FloatingKeyboardManager
       {
         int ch = bottom - top;
         if (ch <= 0) return;
-        // Container's default position (bottom of screen): screenHeight - ch
-        // Desired Y: targetY
-        // Translation needed: targetY - (screenHeight - ch)
-        float translation = targetY - (_screenHeight - ch);
+        // Get the container's actual current position on screen.
+        int[] loc = new int[2];
+        v.getLocationOnScreen(loc);
+        float currentY = loc[1];
+        // Translation needed: move from currentY to targetY.
+        float translation = targetY - currentY;
+        // Clamp so keyboard stays on screen.
+        int[] screenLoc = new int[2];
+        v.getRootView().getLocationOnScreen(screenLoc);
+        int screenTop = screenLoc[1];
+        int screenBottom = screenTop + v.getRootView().getHeight();
+        if (targetY + ch > screenBottom)
+          translation = (screenBottom - ch) - currentY;
+        if (targetY < screenTop)
+          translation = screenTop - currentY;
         v.setTranslationY(translation);
-        debug("applyPosition containerH=" + ch + " screenH=" + _screenHeight
-          + " targetY=" + targetY + " translation=" + translation);
-        // Remove listener after first successful layout.
+        debug("applyPosition currentY=" + currentY + " targetY=" + targetY
+          + " translation=" + translation + " containerH=" + ch);
         v.removeOnLayoutChangeListener(this);
       }
     });
@@ -127,7 +137,7 @@ public final class FloatingKeyboardManager
     {
       case MotionEvent.ACTION_DOWN:
         _dragStartRawY = event.getRawY();
-        _dragStartPosY = _posY == Float.MIN_VALUE ? _screenHeight * 0.4f : _posY;
+        _dragStartTranslation = _container.getTranslationY();
         _isDragging = false;
         return true;
       case MotionEvent.ACTION_MOVE:
@@ -137,22 +147,25 @@ public final class FloatingKeyboardManager
           _isDragging = true;
         if (_isDragging)
         {
-          float ny = _dragStartPosY + dy;
-          int h = _container.getHeight();
-          if (h <= 0) h = _screenHeight / 3;
-          if (ny + h > _screenHeight) ny = _screenHeight - h;
-          if (ny < 0) ny = 0;
-          _posY = ny;
-          float sh = _screenHeight;
-          float translation = ny - (sh - h);
+          float translation = _dragStartTranslation + dy;
           _container.setTranslationY(translation);
+          // Update saved position based on actual screen location
+          int[] loc = new int[2];
+          _container.getLocationOnScreen(loc);
+          _posY = loc[1];
+          debug("drag dy=" + dy + " translation=" + translation + " posY=" + _posY);
         }
         return true;
       }
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL:
         if (_isDragging)
+        {
+          int[] loc = new int[2];
+          _container.getLocationOnScreen(loc);
+          _posY = loc[1];
           _config.save_floating_pos(0, _posY);
+        }
         _isDragging = false;
         return true;
     }
