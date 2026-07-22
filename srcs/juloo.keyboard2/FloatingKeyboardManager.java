@@ -1,18 +1,20 @@
 package juloo.keyboard2;
 
 import android.inputmethodservice.InputMethodService;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 
 /**
- * Minimal floating keyboard: just translate the keyboard container upward
- * using setTranslationY, and set TOUCHABLE_INSETS_REGION so touches outside
- * the keyboard pass through to the app behind.
+ * Minimal floating keyboard: translate the keyboard container upward using
+ * setTranslationY, and restrict touchable area via onComputeInsets.
  *
- * Does NOT modify the IME window LayoutParams at all. The window stays
- * MATCH_PARENT width, WRAP_CONTENT height, BOTTOM gravity (as the system
- * expects). The container is simply translated up.
+ * The IME window is NOT modified at all. The container is simply translated.
+ * naturalTop (the container's on-screen Y without translation) is obtained
+ * from getLocationOnScreen() AFTER layout completes, so it's always accurate
+ * regardless of system bar heights, navigation bar, etc.
  */
 public final class FloatingKeyboardManager
   implements View.OnTouchListener
@@ -25,7 +27,6 @@ public final class FloatingKeyboardManager
   private View _handle;
   private int _screenWidth;
   private int _screenHeight;
-  /** Desired Y of the keyboard top (from screen top). */
   private float _posY;
   private float _dragStartRawY;
   private float _dragStartTranslation;
@@ -35,9 +36,12 @@ public final class FloatingKeyboardManager
   {
     _ime = ime;
     _config = config;
-    _screenWidth = ime.getResources().getDisplayMetrics().widthPixels;
-    _screenHeight = ime.getResources().getDisplayMetrics().heightPixels;
+    // Use display metrics for screen dimensions
+    DisplayMetrics dm = ime.getResources().getDisplayMetrics();
+    _screenWidth = dm.widthPixels;
+    _screenHeight = dm.heightPixels;
     _posY = _config.floating_pos_y;
+    Log.d(TAG, "init screenWidth=" + _screenWidth + " screenHeight=" + _screenHeight);
   }
 
   public void attach(View container, View handle)
@@ -49,18 +53,18 @@ public final class FloatingKeyboardManager
   }
 
   /**
-   * Apply floating translation to the container.
-   * Called from setInputView after the view has been added to the window.
-   * We use addOnLayoutChangeListener to apply translation AFTER the container
-   * has been measured and positioned (calling setTranslationY before layout
-   * gets overridden by the layout pass).
+   * Apply floating translation. Uses OnLayoutChangeListener (one-shot, removes
+   * itself after applying) to ensure translation is applied AFTER layout.
+   * Also uses post() as a fallback.
    *
-   * The listener removes itself after first successful application to avoid
-   * infinite loops.
+   * naturalTop is obtained from getLocationOnScreen() (accurate) minus the
+   * current translationY. This avoids any dependency on _screenHeight for
+   * computing the natural position.
    */
   public void applyPosition(final View container)
   {
     _container = container;
+    // One-shot layout listener
     final View.OnLayoutChangeListener listener = new View.OnLayoutChangeListener()
     {
       @Override
@@ -69,51 +73,58 @@ public final class FloatingKeyboardManager
       {
         int h = bottom - top;
         if (h <= 0) return;
-        // Natural top = where the container is on screen without translation.
-        // Since the IME window is BOTTOM gravity, the container's natural
-        // position is at the bottom of the screen: naturalTop = screenHeight - h.
-        float naturalTop = _screenHeight - h;
-        // Default position: 30% from top
-        float targetY = (_posY == Float.MIN_VALUE) ? _screenHeight * 0.3f : _posY;
-        // Clamp
-        if (targetY < 0) targetY = 0;
-        if (targetY + h > _screenHeight) targetY = _screenHeight - h;
-        float translation = targetY - naturalTop;
-        v.setTranslationY(translation);
-        // Request inset update so touchable region matches new position
-        v.requestApplyInsets();
-        // Remove listener — we only need to apply once per setInputView call
         v.removeOnLayoutChangeListener(this);
-        Log.d(TAG, "applyPosition h=" + h + " naturalTop=" + naturalTop
-          + " targetY=" + targetY + " translationY=" + translation);
+        doTranslation(v);
       }
     };
     container.addOnLayoutChangeListener(listener);
-    // Fallback: also post() in case layout already happened
+    // Fallback
     container.post(new Runnable()
     {
       @Override
       public void run()
       {
-        int h = container.getHeight();
-        if (h > 0 && container.getTranslationY() == 0)
-        {
-          float naturalTop = _screenHeight - h;
-          float targetY = (_posY == Float.MIN_VALUE) ? _screenHeight * 0.3f : _posY;
-          if (targetY < 0) targetY = 0;
-          if (targetY + h > _screenHeight) targetY = _screenHeight - h;
-          float translation = targetY - naturalTop;
-          container.setTranslationY(translation);
-          container.requestApplyInsets();
-          Log.d(TAG, "applyPosition(post) h=" + h + " translationY=" + translation);
-        }
+        if (container.getHeight() > 0 && container.getTranslationY() == 0)
+          doTranslation(container);
       }
     });
   }
 
   /**
-   * Reset floating state.
+   * Actually compute and apply the translation.
    */
+  private void doTranslation(View container)
+  {
+    int h = container.getHeight();
+    if (h <= 0)
+    {
+      Log.d(TAG, "doTranslation: h=0, skipping");
+      return;
+    }
+    // Get the container's actual on-screen position, then undo current
+    // translation to find the natural (un-translated) position.
+    int[] loc = new int[2];
+    container.getLocationOnScreen(loc);
+    float naturalTop = loc[1] - container.getTranslationY();
+    Log.d(TAG, "doTranslation: loc[1]=" + loc[1] + " curTranslationY=" + container.getTranslationY()
+      + " naturalTop=" + naturalTop + " h=" + h + " screenHeight=" + _screenHeight);
+    // Sanity check: if naturalTop is 0 or negative, the window may not be
+    // positioned yet. Use screenHeight - h as fallback.
+    if (naturalTop <= 0 || naturalTop > _screenHeight)
+    {
+      Log.d(TAG, "doTranslation: naturalTop looks wrong, using fallback screenHeight-h");
+      naturalTop = _screenHeight - h;
+    }
+    // Default: 30% from top
+    float targetY = (_posY == Float.MIN_VALUE) ? _screenHeight * 0.3f : _posY;
+    if (targetY < 0) targetY = 0;
+    if (targetY + h > _screenHeight) targetY = _screenHeight - h;
+    float translation = targetY - naturalTop;
+    Log.d(TAG, "doTranslation: targetY=" + targetY + " translation=" + translation);
+    container.setTranslationY(translation);
+    container.requestApplyInsets();
+  }
+
   public void disableFloating(View container)
   {
     _container = container;
@@ -131,7 +142,7 @@ public final class FloatingKeyboardManager
     int h = container.getHeight();
     if (w <= 0 || h <= 0)
     {
-      // Container not laid out yet — don't restrict, use defaults
+      Log.d(TAG, "computeInsets: container not ready w=" + w + " h=" + h);
       return;
     }
     int[] loc = new int[2];
@@ -142,10 +153,10 @@ public final class FloatingKeyboardManager
     int bottom = top + h;
     outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
     outInsets.touchableRegion.set(left, top, right, bottom);
-    // contentTopInsets=0: don't push app content up (keyboard floats over app)
     outInsets.contentTopInsets = 0;
     outInsets.visibleTopInsets = 0;
-    Log.d(TAG, "computeInsets region=[" + left + "," + top + "," + right + "," + bottom + "]");
+    Log.d(TAG, "computeInsets region=[" + left + "," + top + "," + right + "," + bottom
+      + "] translationY=" + container.getTranslationY());
   }
 
   @Override
@@ -158,6 +169,8 @@ public final class FloatingKeyboardManager
         _dragStartRawY = event.getRawY();
         _dragStartTranslation = _container.getTranslationY();
         _isDragging = false;
+        Log.d(TAG, "drag DOWN rawY=" + event.getRawY()
+          + " startTranslation=" + _dragStartTranslation);
         return true;
       case MotionEvent.ACTION_MOVE:
       {
@@ -167,15 +180,14 @@ public final class FloatingKeyboardManager
         if (_isDragging)
         {
           float translation = _dragStartTranslation + dy;
-          // Clamp so keyboard stays on screen
-          int h = _container.getHeight();
-          float naturalTop = _screenHeight - h;
-          float currentTop = naturalTop + translation;
-          if (currentTop < 0) translation = -naturalTop;
-          if (currentTop + h > _screenHeight) translation = _screenHeight - h - naturalTop;
           _container.setTranslationY(translation);
-          _posY = naturalTop + translation;
           _container.requestApplyInsets();
+          // Update saved position
+          int h = _container.getHeight();
+          int[] loc = new int[2];
+          _container.getLocationOnScreen(loc);
+          _posY = loc[1];
+          Log.d(TAG, "drag MOVE dy=" + dy + " translation=" + translation + " posY=" + _posY);
         }
         return true;
       }
