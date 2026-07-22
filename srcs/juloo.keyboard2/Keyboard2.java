@@ -281,15 +281,6 @@ public class Keyboard2 extends InputMethodService
       ((ViewGroup)parent).removeView(v);
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
-    // In floating mode, translate the keyboard container to its position.
-    // Otherwise, reset any floating state (translation, width).
-    if (_floating_manager != null)
-    {
-      if (_config.floating_keyboard)
-        _floating_manager.applyPosition(v);
-      else
-        _floating_manager.disableFloating(v);
-    }
     v.requestApplyInsets();
   }
 
@@ -301,6 +292,7 @@ public class Keyboard2 extends InputMethodService
 
   private void updateSoftInputWindowLayoutParams() {
     final Window window = getWindow().getWindow();
+    boolean floating = _config != null && _config.floating_keyboard;
     // On API >= 35, Keyboard2View behaves as edge-to-edge
     // APIs 30 to 34 have visual artifact when edge-to-edge is enabled
     if (VERSION.SDK_INT >= 35)
@@ -312,31 +304,45 @@ public class Keyboard2 extends InputMethodService
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
     }
-    updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
-    final View inputArea = window.findViewById(android.R.id.inputArea);
 
+    if (floating)
+    {
+      // Floating mode: the window itself becomes the floating keyboard.
+      // Set window to WRAP_CONTENT height, fixed width, TOP|START gravity
+      // with x/y offsets. The FloatingKeyboardManager handles the details.
+      updateLayoutHeightOf(window, ViewGroup.LayoutParams.WRAP_CONTENT);
+      // Make window background transparent (area outside keyboard is see-through)
+      window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+      // Apply floating window position via FloatingKeyboardManager
+      if (_floating_manager != null)
+        _floating_manager.applyFloatingWindow(window);
+    }
+    else
+    {
+      // Normal mode: window is MATCH_PARENT width, WRAP_CONTENT height, BOTTOM
+      updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
+      if (_floating_manager != null)
+        _floating_manager.disableFloatingWindow(window);
+    }
+
+    final View inputArea = window.findViewById(android.R.id.inputArea);
     updateLayoutHeightOf(
             (View) inputArea.getParent(),
             isFullscreenMode()
                     ? ViewGroup.LayoutParams.MATCH_PARENT
                     : ViewGroup.LayoutParams.WRAP_CONTENT);
-    updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
+    updateLayoutGravityOf((View) inputArea.getParent(),
+            floating ? Gravity.TOP : Gravity.BOTTOM);
 
-    // In floating mode, make the IME window background transparent so the
-    // app behind is visible (the window still extends to bottom but is
-    // transparent except where the keyboard container is drawn).
-    if (_config != null && _config.floating_keyboard)
+    // In floating mode, make backgrounds transparent so app shows through
+    if (floating)
     {
-      window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-      // Also make inputArea background transparent
       if (inputArea != null)
         inputArea.setBackgroundResource(0);
-      // And its parent
       View parent = (View) inputArea.getParent();
       if (parent != null)
         parent.setBackgroundResource(0);
     }
-
   }
 
   private static void updateLayoutHeightOf(final Window window, final int layoutHeight) {
@@ -417,13 +423,6 @@ public class Keyboard2 extends InputMethodService
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
     }
-  }
-
-  /** Request the system to recompute insets (e.g. after dragging the keyboard). */
-  public void requestInsets()
-  {
-    // requestApplyInsets triggers onComputeInsets on the next layout pass
-    _keyboard_container_view.requestApplyInsets();
   }
 
   @Override
