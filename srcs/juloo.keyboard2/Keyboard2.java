@@ -308,21 +308,27 @@ public class Keyboard2 extends InputMethodService
     if (floating)
     {
       // Floating mode: the window itself becomes the floating keyboard.
-      // Set window to WRAP_CONTENT height, fixed width, TOP|START gravity
-      // with x/y offsets. The FloatingKeyboardManager handles the details.
-      updateLayoutHeightOf(window, ViewGroup.LayoutParams.WRAP_CONTENT);
-      // Make window background transparent (area outside keyboard is see-through)
+      // Set all window LayoutParams in ONE setAttributes call to avoid
+      // intermediate states. Width/height/gravity/x/y all set together.
       window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-      // Apply floating window position via FloatingKeyboardManager
       if (_floating_manager != null)
         _floating_manager.applyFloatingWindow(window);
+      // Also set height to WRAP_CONTENT (applyFloatingWindow sets width, but
+      // height may still be MATCH_PARENT from onConfigureWindow)
+      WindowManager.LayoutParams lp = window.getAttributes();
+      if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT)
+      {
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        window.setAttributes(lp);
+      }
     }
     else
     {
       // Normal mode: window is MATCH_PARENT width, WRAP_CONTENT height, BOTTOM
-      updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
       if (_floating_manager != null)
         _floating_manager.disableFloatingWindow(window);
+      // Ensure height is WRAP_CONTENT for normal mode too
+      updateLayoutHeightOf(window, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     final View inputArea = window.findViewById(android.R.id.inputArea);

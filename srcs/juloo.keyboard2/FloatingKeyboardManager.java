@@ -86,31 +86,36 @@ public final class FloatingKeyboardManager
   public void applyFloatingWindow(Window window)
   {
     int widthPx = getKeyboardWidthPx();
-    // Default position: centered horizontally, 40% from top
+    // Default position: centered horizontally, 30% from top
     float targetX = (_posX == Float.MIN_VALUE)
       ? (_screenWidth - widthPx) / 2f : _posX;
     float targetY = (_posY == Float.MIN_VALUE)
-      ? _screenHeight * 0.4f : _posY;
+      ? _screenHeight * 0.3f : _posY;
     // Clamp
     if (targetX < 0) targetX = 0;
     if (targetX + widthPx > _screenWidth) targetX = _screenWidth - widthPx;
     if (targetY < 0) targetY = 0;
-    // Don't clamp Y too aggressively — keyboard height is unknown until measured
 
     WindowManager.LayoutParams lp = window.getAttributes();
     boolean changed = false;
+    // Set width to configured %
     if (lp.width != widthPx) { lp.width = widthPx; changed = true; }
-    // Use TOP|START gravity so x/y are offsets from top-left of screen
+    // Use TOP|START gravity so x/y position from top-left
     int targetGravity = Gravity.TOP | Gravity.START;
     if (lp.gravity != targetGravity) { lp.gravity = targetGravity; changed = true; }
     if (lp.x != (int)targetX) { lp.x = (int)targetX; changed = true; }
     if (lp.y != (int)targetY) { lp.y = (int)targetY; changed = true; }
+    // Set height to WRAP_CONTENT explicitly
+    if (lp.height != WindowManager.LayoutParams.WRAP_CONTENT)
+    { lp.height = WindowManager.LayoutParams.WRAP_CONTENT; changed = true; }
     if (changed)
     {
       window.setAttributes(lp);
     }
     debug("applyFloatingWindow width=" + widthPx + " x=" + (int)targetX
-      + " y=" + (int)targetY + " gravity=TOP|START changed=" + changed);
+      + " y=" + (int)targetY + " gravity=TOP|START changed=" + changed
+      + " lp.gravity=" + lp.gravity + " lp.width=" + lp.width
+      + " lp.height=" + lp.height);
   }
 
   /**
