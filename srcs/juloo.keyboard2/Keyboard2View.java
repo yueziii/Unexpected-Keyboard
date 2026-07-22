@@ -266,17 +266,6 @@ public class Keyboard2View extends View
   {
     DisplayMetrics dm = getContext().getResources().getDisplayMetrics();
     int width = dm.widthPixels;
-    // In floating mode, respect the width given by the parent (which is
-    // constrained to the floating keyboard width) instead of always using
-    // the full screen width.
-    int specMode = View.MeasureSpec.getMode(wSpec);
-    int specSize = View.MeasureSpec.getSize(wSpec);
-    if (specMode == View.MeasureSpec.EXACTLY
-        || specMode == View.MeasureSpec.AT_MOST)
-    {
-      if (specSize > 0 && specSize < width)
-        width = specSize;
-    }
     _marginLeft = Math.max(_config.horizontal_margin, _insets_left);
     _marginRight = Math.max(_config.horizontal_margin, _insets_right);
     _marginBottom = _config.margin_bottom + _insets_bottom;
@@ -295,19 +284,6 @@ public class Keyboard2View extends View
     int height =
       (int)(_tc.row_height * _keyboard.keysHeight
           + _config.marginTop + _marginBottom);
-    if (_config.floating_keyboard)
-    {
-      String msg = "onMeasure width=" + width + " height=" + height
-        + " rowHeight=" + _tc.row_height + " keysHeight=" + _keyboard.keysHeight
-        + " specMode=" + specMode + " specSize=" + specSize;
-      Logs.debug("Floating: " + msg);
-      try {
-        java.io.File logFile = new java.io.File(getContext().getFilesDir(), "floating_debug.txt");
-        java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
-        fw.write(msg + "\n");
-        fw.close();
-      } catch (Exception e) {}
-    }
     setMeasuredDimension(width, height);
   }
 

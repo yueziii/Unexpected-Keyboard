@@ -54,8 +54,6 @@ public class Keyboard2 extends InputMethodService
   private Config _config;
 
   private FoldStateTracker _foldStateTracker;
-
-  /** Manages the floating keyboard mode (movable window). */
   private FloatingKeyboardManager _floating_manager;
 
   /** Layout currently visible before it has been modified. */
@@ -160,12 +158,6 @@ public class Keyboard2 extends InputMethodService
   private void create_keyboard_view()
   {
     _keyboard_container_view = (ViewGroup)inflate_view(R.layout.keyboard);
-    // [inflate_view] passes null as root, so the inflated view has no
-    // LayoutParams. Create one so floating width can be set later.
-    if (_keyboard_container_view.getLayoutParams() == null)
-      _keyboard_container_view.setLayoutParams(
-        new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-          ViewGroup.LayoutParams.WRAP_CONTENT));
     _keyboard_layout_view = (Keyboard2View)_keyboard_container_view.findViewById(R.id.keyboard_view);
     _candidates_view = (CandidatesView)_keyboard_container_view.findViewById(R.id.candidates_view);
     if (_floating_manager != null)
@@ -243,8 +235,10 @@ public class Keyboard2 extends InputMethodService
     Drawable bg = _keyboard_container_view.getBackground().mutate();
     bg.setAlpha(_config.keyboardOpacity);
     _keyboard_container_view.setBackground(bg);
-    // Apply floating keyboard state: show/hide drag handle and set width
-    apply_floating_state();
+    // Show/hide drag handle for floating mode
+    View handle = _keyboard_container_view.findViewById(R.id.floating_drag_handle);
+    if (handle != null)
+      handle.setVisibility(_config.floating_keyboard ? View.VISIBLE : View.GONE);
     _keyboard_layout_view.reset();
     refresh_candidates_view();
   }
@@ -285,15 +279,9 @@ public class Keyboard2 extends InputMethodService
       ((ViewGroup)parent).removeView(v);
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
-    // In floating mode, constrain the width of whatever view is shown and
-    // position it via setX/setY (the window stays full-screen, but touches
-    // outside the keyboard are passed through via onComputeInsets).
+    // In floating mode, translate the keyboard container to its position.
     if (_floating_manager != null && _config.floating_keyboard)
-    {
-      Logs.debug("Floating: setInputView");
-      _floating_manager.attach(v, v.findViewById(R.id.floating_drag_handle));
-      _floating_manager.applyFloatingWindowLayout(getWindow().getWindow());
-    }
+      _floating_manager.applyPosition(v);
     v.requestApplyInsets();
   }
 
@@ -303,36 +291,8 @@ public class Keyboard2 extends InputMethodService
     updateSoftInputWindowLayoutParams();
   }
 
-  @Override
-  public void onComputeInsets(Insets outInsets)
-  {
-    super.onComputeInsets(outInsets);
-    // In floating mode, only the keyboard container's screen rectangle
-    // should be touchable. The rest of the window (which fills the screen)
-    // must let touches pass through to the app behind it.
-    if (_config != null && _config.floating_keyboard
-        && _floating_manager != null && _keyboard_container_view != null)
-    {
-      _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
-      String msg = "onComputeInsets containerW=" + _keyboard_container_view.getWidth()
-        + " containerH=" + _keyboard_container_view.getHeight()
-        + " touchable=" + outInsets.touchableInsets
-        + " region=" + outInsets.touchableRegion
-        + " contentTop=" + outInsets.contentTopInsets;
-      Logs.debug("Floating: " + msg);
-      try {
-        java.io.File logFile = new java.io.File(getFilesDir(), "floating_debug.txt");
-        java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
-        fw.write(msg + "\n");
-        fw.close();
-      } catch (Exception e) {}
-    }
-  }
-
   private void updateSoftInputWindowLayoutParams() {
     final Window window = getWindow().getWindow();
-    Logs.debug("Floating: updateSoftInputWindowLayoutParams floating=" 
-      + (_config != null && _config.floating_keyboard));
     // On API >= 35, Keyboard2View behaves as edge-to-edge
     // APIs 30 to 34 have visual artifact when edge-to-edge is enabled
     if (VERSION.SDK_INT >= 35)
@@ -347,36 +307,13 @@ public class Keyboard2 extends InputMethodService
     updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
 
-    if (_config.floating_keyboard && _floating_manager != null)
-    {
-      // Floating mode: don't modify inputArea parent layout at all.
-      // Instead, the window's own gravity+x/y are set in applyFloatingWindowLayout
-      // to position the entire window freely on screen.
-      // Keep the default inputArea layout (WRAP_CONTENT + BOTTOM).
-      updateLayoutHeightOf((View) inputArea.getParent(),
-          ViewGroup.LayoutParams.WRAP_CONTENT);
-      updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
-      // Position the window itself.
-      _floating_manager.applyFloatingWindowLayout(window);
-    }
-    else
-    {
-      // Reset window gravity/x/y that floating mode may have set.
-      WindowManager.LayoutParams lp = window.getAttributes();
-      if (lp != null && lp.gravity != Gravity.BOTTOM)
-      {
-        lp.gravity = Gravity.BOTTOM;
-        lp.x = 0;
-        lp.y = 0;
-        window.setAttributes(lp);
-      }
-      updateLayoutHeightOf(
-              (View) inputArea.getParent(),
-              isFullscreenMode()
-                      ? ViewGroup.LayoutParams.MATCH_PARENT
-                      : ViewGroup.LayoutParams.WRAP_CONTENT);
-      updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
-    }
+    updateLayoutHeightOf(
+            (View) inputArea.getParent(),
+            isFullscreenMode()
+                    ? ViewGroup.LayoutParams.MATCH_PARENT
+                    : ViewGroup.LayoutParams.WRAP_CONTENT);
+    updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
+
   }
 
   private static void updateLayoutHeightOf(final Window window, final int layoutHeight) {
@@ -412,22 +349,6 @@ public class Keyboard2 extends InputMethodService
     }
   }
 
-  /** Show/hide the drag handle and constrain keyboard width for floating mode. */
-  private void apply_floating_state()
-  {
-    View handle = _keyboard_container_view.findViewById(R.id.floating_drag_handle);
-    if (_config.floating_keyboard)
-    {
-      if (handle != null)
-        handle.setVisibility(View.VISIBLE);
-    }
-    else
-    {
-      if (handle != null)
-        handle.setVisibility(View.GONE);
-    }
-  }
-
   @Override
   public void onCurrentInputMethodSubtypeChanged(InputMethodSubtype subtype)
   {
@@ -459,10 +380,19 @@ public class Keyboard2 extends InputMethodService
   {
     refresh_config();
     _keyboard_layout_view.setKeyboard(current_layout());
-    // If floating mode was toggled, re-set the input view so the window
-    // layout params are updated immediately.
     if ("floating_keyboard".equals(_key) || "floating_keyboard_width".equals(_key))
       setInputView(_keyboard_container_view);
+  }
+
+  @Override
+  public void onComputeInsets(Insets outInsets)
+  {
+    super.onComputeInsets(outInsets);
+    if (_config != null && _config.floating_keyboard
+        && _floating_manager != null && _keyboard_container_view != null)
+    {
+      _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
+    }
   }
 
   @Override
