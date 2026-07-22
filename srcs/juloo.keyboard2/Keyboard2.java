@@ -4,7 +4,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.ColorDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.os.Build.VERSION;
 import android.os.Handler;
@@ -319,6 +321,21 @@ public class Keyboard2 extends InputMethodService
                     ? ViewGroup.LayoutParams.MATCH_PARENT
                     : ViewGroup.LayoutParams.WRAP_CONTENT);
     updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
+
+    // In floating mode, make the IME window background transparent so the
+    // app behind is visible (the window still extends to bottom but is
+    // transparent except where the keyboard container is drawn).
+    if (_config != null && _config.floating_keyboard)
+    {
+      window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+      // Also make inputArea background transparent
+      if (inputArea != null)
+        inputArea.setBackgroundResource(0);
+      // And its parent
+      View parent = (View) inputArea.getParent();
+      if (parent != null)
+        parent.setBackgroundResource(0);
+    }
 
   }
 

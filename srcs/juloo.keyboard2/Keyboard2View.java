@@ -266,10 +266,11 @@ public class Keyboard2View extends View
   {
     DisplayMetrics dm = getContext().getResources().getDisplayMetrics();
     int width = dm.widthPixels;
-    // Respect parent's width constraint (used for floating keyboard width)
+    // Respect parent's width constraint (used for floating keyboard width).
+    // Guard against specSize=0 (parent hasn't been measured yet).
     int specMode = View.MeasureSpec.getMode(wSpec);
     int specSize = View.MeasureSpec.getSize(wSpec);
-    if (specMode == View.MeasureSpec.AT_MOST || specMode == View.MeasureSpec.EXACTLY)
+    if (specSize > 0 && (specMode == View.MeasureSpec.AT_MOST || specMode == View.MeasureSpec.EXACTLY))
       width = Math.min(width, specSize);
     _marginLeft = Math.max(_config.horizontal_margin, _insets_left);
     _marginRight = Math.max(_config.horizontal_margin, _insets_right);
