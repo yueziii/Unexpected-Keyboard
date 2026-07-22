@@ -280,8 +280,14 @@ public class Keyboard2 extends InputMethodService
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
     // In floating mode, translate the keyboard container to its position.
-    if (_floating_manager != null && _config.floating_keyboard)
-      _floating_manager.applyPosition(v);
+    // Otherwise, reset any floating state (translation, width).
+    if (_floating_manager != null)
+    {
+      if (_config.floating_keyboard)
+        _floating_manager.applyPosition(v);
+      else
+        _floating_manager.disableFloating(v);
+    }
     v.requestApplyInsets();
   }
 
@@ -382,6 +388,25 @@ public class Keyboard2 extends InputMethodService
     _keyboard_layout_view.setKeyboard(current_layout());
     if ("floating_keyboard".equals(_key) || "floating_keyboard_width".equals(_key))
       setInputView(_keyboard_container_view);
+  }
+
+  @Override
+  public void onComputeInsets(InputMethodService.Insets outInsets)
+  {
+    super.onComputeInsets(outInsets);
+    // In floating mode, restrict touchable area to the keyboard container only
+    // so touches pass through to the app behind.
+    if (_floating_manager != null && _config.floating_keyboard)
+    {
+      _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
+    }
+  }
+
+  /** Request the system to recompute insets (e.g. after dragging the keyboard). */
+  public void requestInsets()
+  {
+    // requestApplyInsets triggers onComputeInsets on the next layout pass
+    _keyboard_container_view.requestApplyInsets();
   }
 
   @Override
