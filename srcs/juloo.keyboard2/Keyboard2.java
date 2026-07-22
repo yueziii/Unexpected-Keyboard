@@ -385,17 +385,6 @@ public class Keyboard2 extends InputMethodService
   }
 
   @Override
-  public void onComputeInsets(Insets outInsets)
-  {
-    super.onComputeInsets(outInsets);
-    if (_config != null && _config.floating_keyboard
-        && _floating_manager != null && _keyboard_container_view != null)
-    {
-      _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
-    }
-  }
-
-  @Override
   public boolean onEvaluateFullscreenMode()
   {
     /* Entirely disable fullscreen mode. */
