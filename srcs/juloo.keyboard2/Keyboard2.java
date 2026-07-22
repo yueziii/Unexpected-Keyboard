@@ -323,6 +323,8 @@ public class Keyboard2 extends InputMethodService
 
   private void updateSoftInputWindowLayoutParams() {
     final Window window = getWindow().getWindow();
+    Logs.debug("Floating: updateSoftInputWindowLayoutParams floating=" 
+      + (_config != null && _config.floating_keyboard));
     // On API >= 35, Keyboard2View behaves as edge-to-edge
     // APIs 30 to 34 have visual artifact when edge-to-edge is enabled
     if (VERSION.SDK_INT >= 35)

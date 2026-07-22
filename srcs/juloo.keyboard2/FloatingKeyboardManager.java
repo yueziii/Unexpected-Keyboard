@@ -97,9 +97,13 @@ public final class FloatingKeyboardManager
     }
     lp.x = (int) x;
     lp.y = (int) y;
-    window.setAttributes(lp);
-    Logs.debug("Floating: applyFloatingWindowLayout gravity=" + lp.gravity
+    Logs.debug("Floating: BEFORE setAttributes gravity=" + lp.gravity
       + " x=" + lp.x + " y=" + lp.y + " w=" + lp.width + " h=" + lp.height);
+    window.setAttributes(lp);
+    // Verify the attributes were actually set
+    WindowManager.LayoutParams verify = window.getAttributes();
+    Logs.debug("Floating: AFTER setAttributes gravity=" + verify.gravity
+      + " x=" + verify.x + " y=" + verify.y + " w=" + verify.width + " h=" + verify.height);
   }
 
     /**
