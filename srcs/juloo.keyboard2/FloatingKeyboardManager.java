@@ -28,6 +28,8 @@ public final class FloatingKeyboardManager
   private int _screenWidth;
   private int _screenHeight;
   private float _posY;
+  /** The last computed target Y (where keyboard should appear on screen). */
+  private float _lastTargetY;
   private float _dragStartRawY;
   private float _dragStartTranslation;
   private boolean _isDragging;
@@ -81,14 +83,38 @@ public final class FloatingKeyboardManager
       }
     };
     container.addOnLayoutChangeListener(listener);
-    // Fallback
+    // Fallback: post() runs after the current message queue is processed.
+    // Don't check translationY — just check if container has been laid out.
     container.post(new Runnable()
     {
       @Override
       public void run()
       {
-        if (container.getHeight() > 0 && container.getTranslationY() == 0)
+        if (container.getHeight() > 0)
+        {
+          Log.d(TAG, "post() fallback: container has height, applying translation");
           doTranslation(container);
+        }
+        else
+        {
+          Log.d(TAG, "post() fallback: container still h=0, retrying with postDelayed");
+          container.postDelayed(new Runnable()
+          {
+            @Override
+            public void run()
+            {
+              if (container.getHeight() > 0)
+              {
+                Log.d(TAG, "postDelayed: container now has height, applying translation");
+                doTranslation(container);
+              }
+              else
+              {
+                Log.d(TAG, "postDelayed: container STILL h=0 after 500ms");
+              }
+            }
+          }, 500);
+        }
       }
     });
   }
@@ -123,9 +149,13 @@ public final class FloatingKeyboardManager
     if (targetY < 0) targetY = 0;
     if (targetY + h > _screenHeight) targetY = _screenHeight - h;
     float translation = targetY - naturalTop;
+    _lastTargetY = targetY;
     Log.d(TAG, "doTranslation: targetY=" + targetY + " translation=" + translation);
     container.setTranslationY(translation);
-    container.requestApplyInsets();
+    // DON'T call requestApplyInsets() here — it causes an infinite loop:
+    // requestApplyInsets → onComputeInsets → layout → doTranslation → ...
+    // Instead, we set the touchable region in onComputeInsets using
+    // getLocationOnScreen which includes the translation.
   }
 
   public void disableFloating(View container)
@@ -154,14 +184,37 @@ public final class FloatingKeyboardManager
     int top = loc[1];
     int right = left + w;
     int bottom = top + h;
-    // DON'T set contentTopInsets/visibleTopInsets — let super.onComputeInsets
-    // keep its default values. Setting contentTopInsets=0 caused the system
-    // to think the IME covers the entire screen, which may have caused the
-    // system to shrink/hide the IME window.
-    outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
-    outInsets.touchableRegion.set(left, top, right, bottom);
+    // Clamp all values to screen bounds (negative values cause infinite
+    // onComputeInsets loops as the system tries to resolve them)
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > _screenWidth) right = _screenWidth;
+    if (bottom > _screenHeight) bottom = _screenHeight;
+    // contentTopInsets tells the system where the IME content starts.
+    // In floating mode, the keyboard floats over the app. We set this to
+    // the keyboard's actual screen top (the visible top, clamped to >= 0).
+    // This prevents the system from resizing the app window AND avoids the
+    // infinite loop caused by contentTopInsets=0 with translated containers.
+    // Use the stored target Y (the actual visible position of the keyboard
+    // top) instead of getLocationOnScreen (which returns a negative value
+    // due to translationY moving the container above the window origin).
+    int safeTop = (int) Math.max(0, _lastTargetY);
+    outInsets.contentTopInsets = safeTop;
+    outInsets.visibleTopInsets = safeTop;
+    // Only set touchable region if we have a valid (non-empty) rect
+    if (right > left && bottom > top)
+    {
+      outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
+      outInsets.touchableRegion.set(left, top, right, bottom);
+    }
+    else
+    {
+      // Fallback: use TOUCHABLE_INSETS_FRAME (whole window touchable)
+      outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_FRAME;
+    }
     Log.d(TAG, "computeInsets region=[" + left + "," + top + "," + right + "," + bottom
-      + "] translationY=" + container.getTranslationY());
+      + "] translationY=" + container.getTranslationY()
+      + " contentTopInsets=" + safeTop);
   }
 
   @Override

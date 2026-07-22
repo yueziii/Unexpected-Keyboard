@@ -415,6 +415,10 @@ public class Keyboard2 extends InputMethodService
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
     }
+    else
+    {
+      Log.d("FloatingKeyboard", "onComputeInsets: (not floating) contentTopInsets=" + outInsets.contentTopInsets);
+    }
   }
 
   @Override
