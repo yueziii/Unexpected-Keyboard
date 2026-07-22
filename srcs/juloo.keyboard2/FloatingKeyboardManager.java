@@ -67,30 +67,25 @@ public final class FloatingKeyboardManager
   public void applyPosition(View container)
   {
     _container = container;
-    float targetY = _posY;
-    if (targetY == Float.MIN_VALUE)
-      targetY = _screenHeight * 0.4f;
-    // Clamp: keep keyboard fully on screen.
-    int h = container.getHeight();
-    if (h <= 0) h = _screenHeight / 3;
-    if (targetY + h > _screenHeight)
-      targetY = _screenHeight - h;
-    if (targetY < 0) targetY = 0;
-    // The container is at the bottom of the screen by default.
-    // translationY = targetY - (screenHeight - containerHeight)
-    // But we don't know the exact default position yet, so use a post-layout
-    // callback to set the correct translation.
-    final float ty = targetY;
-    container.post(() -> {
-      int ch = container.getHeight();
-      int sh = _screenHeight;
-      // Container's default position (bottom of screen): sh - ch
-      // Desired position: ty
-      // Translation needed: ty - (sh - ch)
-      float translation = ty - (sh - ch);
-      container.setTranslationY(translation);
-      debug("applyPosition containerH=" + ch + " screenH=" + sh
-        + " targetY=" + ty + " translation=" + translation);
+    final float targetY = (_posY == Float.MIN_VALUE) ? _screenHeight * 0.4f : _posY;
+    // Use a layout change listener so we get the correct height after layout.
+    container.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+      @Override
+      public void onLayoutChange(View v, int left, int top, int right, int bottom,
+          int oldLeft, int oldTop, int oldRight, int oldBottom)
+      {
+        int ch = bottom - top;
+        if (ch <= 0) return;
+        // Container's default position (bottom of screen): screenHeight - ch
+        // Desired Y: targetY
+        // Translation needed: targetY - (screenHeight - ch)
+        float translation = targetY - (_screenHeight - ch);
+        v.setTranslationY(translation);
+        debug("applyPosition containerH=" + ch + " screenH=" + _screenHeight
+          + " targetY=" + targetY + " translation=" + translation);
+        // Remove listener after first successful layout.
+        v.removeOnLayoutChangeListener(this);
+      }
     });
   }
 
@@ -107,9 +102,8 @@ public final class FloatingKeyboardManager
     if (bottom <= top) bottom = top + (_screenHeight / 3);
     outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
     outInsets.touchableRegion.set(left, top, right, bottom);
-    // Don't resize app content — floating keyboard overlays.
-    outInsets.contentTopInsets = _screenHeight;
-    outInsets.visibleTopInsets = _screenHeight;
+    // Keep contentTopInsets/visibleTopInsets from super.onComputeInsets (default).
+    // Setting them to screenHeight was causing the system to not show the IME.
     debug("onComputeInsets loc=[" + left + "," + top + "] w=" + container.getWidth()
       + " h=" + container.getHeight() + " region=[" + left + "," + top + "," + right + "," + bottom + "]");
   }
