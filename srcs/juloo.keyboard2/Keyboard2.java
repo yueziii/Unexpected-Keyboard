@@ -285,9 +285,9 @@ public class Keyboard2 extends InputMethodService
       ((ViewGroup)parent).removeView(v);
     super.setInputView(v);
     updateSoftInputWindowLayoutParams();
-    // In floating mode, constrain the width of whatever view is shown
-    // (keyboard, emoji pane, clipboard pane). Window position is handled by
-    // [updateSoftInputWindowLayoutParams] via the window's own LayoutParams.
+    // In floating mode, constrain the width of whatever view is shown and
+    // position it via setX/setY (the window stays full-screen, but touches
+    // outside the keyboard are passed through via onComputeInsets).
     if (_floating_manager != null && _config.floating_keyboard)
     {
       int width = _floating_manager.getKeyboardWidthPx();
@@ -298,8 +298,8 @@ public class Keyboard2 extends InputMethodService
       else if (lp.width != width)
         lp.width = width;
       v.setLayoutParams(lp);
-      // Re-apply window position in case the view size changed.
-      _floating_manager.applyFloatingWindowLayout(getWindow().getWindow());
+      _floating_manager.attach(v, v.findViewById(R.id.floating_drag_handle));
+      _floating_manager.applyPosition(v);
     }
     v.requestApplyInsets();
   }
@@ -311,20 +311,16 @@ public class Keyboard2 extends InputMethodService
   }
 
   @Override
-  public void onConfigureWindow(Window win, boolean isFullscreen,
-      boolean isCandidatesOnly)
+  public void onComputeInsets(Insets outInsets)
   {
-    if (_config != null && _config.floating_keyboard && _floating_manager != null)
+    super.onComputeInsets(outInsets);
+    // In floating mode, only the keyboard container's screen rectangle
+    // should be touchable. The rest of the window (which fills the screen)
+    // must let touches pass through to the app behind it.
+    if (_config != null && _config.floating_keyboard
+        && _floating_manager != null && _keyboard_container_view != null)
     {
-      // Floating mode: override the default layout to make the window
-      // WRAP_CONTENT (both dimensions) and freely positioned via gravity + x/y.
-      // The default implementation forces MATCH_PARENT width, which makes the
-      // window cover the whole screen and prevents free positioning.
-      _floating_manager.applyFloatingWindowLayout(win);
-    }
-    else
-    {
-      super.onConfigureWindow(win, isFullscreen, isCandidatesOnly);
+      _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
     }
   }
 
@@ -341,17 +337,17 @@ public class Keyboard2 extends InputMethodService
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
     }
+    updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
 
     if (_config.floating_keyboard && _floating_manager != null)
     {
-      // Floating mode: the IME window itself becomes a small, freely
-      // positioned window. The window height is WRAP_CONTENT so it only
-      // covers the keyboard area (not the whole screen), letting touches
-      // pass through to the app behind it. Position is controlled via the
-      // window's own LayoutParams gravity + x/y.
-      _floating_manager.applyFloatingWindowLayout(window);
-      // inputArea parent wraps content too.
+      // Floating mode: the window stays full-screen (TYPE_INPUT_METHOD is
+      // forced to MATCH_PARENT by the system), but the input area's parent
+      // uses WRAP_CONTENT + TOP|START so the keyboard container can be
+      // translated via setX/setY. Touch pass-through is handled by
+      // onComputeInsets which sets a touchable region covering only the
+      // keyboard rectangle.
       updateLayoutHeightOf((View) inputArea.getParent(),
           ViewGroup.LayoutParams.WRAP_CONTENT);
       updateLayoutGravityOf((View) inputArea.getParent(),
@@ -359,17 +355,6 @@ public class Keyboard2 extends InputMethodService
     }
     else
     {
-      // Reset window params that floating mode may have changed.
-      WindowManager.LayoutParams lp = window.getAttributes();
-      if (lp != null)
-      {
-        lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-        lp.gravity = Gravity.NO_GRAVITY;
-        lp.x = 0;
-        lp.y = 0;
-        window.setAttributes(lp);
-      }
       updateLayoutHeightOf(
               (View) inputArea.getParent(),
               isFullscreenMode()
