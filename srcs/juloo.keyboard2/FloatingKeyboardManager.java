@@ -85,22 +85,16 @@ public final class FloatingKeyboardManager
     WindowManager.LayoutParams lp = window.getAttributes();
     if (lp == null)
       return;
-    // Window stays MATCH_PARENT width (system enforces this for TYPE_INPUT_METHOD)
-    // and WRAP_CONTENT height (default non-fullscreen). We only change gravity
-    // and position.
+    // MINIMAL TEST: just change window gravity from BOTTOM to TOP.
+    // This should move the keyboard to the top of the screen.
     lp.gravity = Gravity.TOP | Gravity.START;
     float x = _posX;
     float y = _posY;
     if (x == Float.MIN_VALUE || y == Float.MIN_VALUE)
     {
-      // Default: centered horizontally, lower portion of screen.
-      x = 0; // window is full-width, keyboard is centered within it
-      y = _screenHeight * 0.45f;
+      x = 0;
+      y = _screenHeight * 0.3f;
     }
-    x = clampX(x);
-    y = clampY(y);
-    _posX = x;
-    _posY = y;
     lp.x = (int) x;
     lp.y = (int) y;
     window.setAttributes(lp);
@@ -108,7 +102,7 @@ public final class FloatingKeyboardManager
       + " x=" + lp.x + " y=" + lp.y + " w=" + lp.width + " h=" + lp.height);
   }
 
-  /**
+    /**
    * Compute insets: only the keyboard container's screen rectangle is
    * touchable. The rest of the full-screen window passes touches through.
    */

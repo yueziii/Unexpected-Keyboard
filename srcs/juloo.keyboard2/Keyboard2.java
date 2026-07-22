@@ -290,21 +290,7 @@ public class Keyboard2 extends InputMethodService
     // outside the keyboard are passed through via onComputeInsets).
     if (_floating_manager != null && _config.floating_keyboard)
     {
-      Logs.debug("Floating: setInputView container=" + v.getClass().getSimpleName()
-        + " w=" + v.getLayoutParams().width + " h=" + v.getLayoutParams().height);
-      int width = _floating_manager.getKeyboardWidthPx();
-      // Use FrameLayout.LayoutParams since the view is added to mInputFrame
-      // (a FrameLayout). Set gravity to center_horizontal so the narrower
-      // keyboard is centered within the full-width window.
-      android.widget.FrameLayout.LayoutParams lp;
-      if (v.getLayoutParams() instanceof android.widget.FrameLayout.LayoutParams)
-        lp = (android.widget.FrameLayout.LayoutParams) v.getLayoutParams();
-      else
-        lp = new android.widget.FrameLayout.LayoutParams(width,
-          ViewGroup.LayoutParams.WRAP_CONTENT);
-      lp.width = width;
-      lp.gravity = Gravity.CENTER_HORIZONTAL;
-      v.setLayoutParams(lp);
+      Logs.debug("Floating: setInputView");
       _floating_manager.attach(v, v.findViewById(R.id.floating_drag_handle));
       _floating_manager.applyFloatingWindowLayout(getWindow().getWindow());
     }
@@ -424,36 +410,11 @@ public class Keyboard2 extends InputMethodService
     {
       if (handle != null)
         handle.setVisibility(View.VISIBLE);
-      // Constrain the floating keyboard width and center it horizontally
-      // within the full-width window.
-      if (_floating_manager != null)
-      {
-        int width = _floating_manager.getKeyboardWidthPx();
-        android.widget.FrameLayout.LayoutParams lp;
-        if (_keyboard_container_view.getLayoutParams() instanceof android.widget.FrameLayout.LayoutParams)
-          lp = (android.widget.FrameLayout.LayoutParams) _keyboard_container_view.getLayoutParams();
-        else
-          lp = new android.widget.FrameLayout.LayoutParams(width,
-            ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.width = width;
-        lp.gravity = Gravity.CENTER_HORIZONTAL;
-        _keyboard_container_view.setLayoutParams(lp);
-      }
     }
     else
     {
       if (handle != null)
         handle.setVisibility(View.GONE);
-      // Restore full-width layout.
-      android.widget.FrameLayout.LayoutParams lp;
-      if (_keyboard_container_view.getLayoutParams() instanceof android.widget.FrameLayout.LayoutParams)
-        lp = (android.widget.FrameLayout.LayoutParams) _keyboard_container_view.getLayoutParams();
-      else
-        lp = new android.widget.FrameLayout.LayoutParams(
-          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-      lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-      lp.gravity = Gravity.NO_GRAVITY;
-      _keyboard_container_view.setLayoutParams(lp);
     }
   }
 
