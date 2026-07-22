@@ -309,15 +309,31 @@ public class Keyboard2 extends InputMethodService
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
     }
+    boolean floating = _config != null && _config.floating_keyboard;
     updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
 
-    updateLayoutHeightOf(
-            (View) inputArea.getParent(),
-            isFullscreenMode()
-                    ? ViewGroup.LayoutParams.MATCH_PARENT
-                    : ViewGroup.LayoutParams.WRAP_CONTENT);
+    // In floating mode, set mFullscreenArea (inputArea.getParent()) to
+    // MATCH_PARENT so the keyboard container is NOT clipped when translated
+    // upward. Without this, WRAP_CONTENT on mFullscreenArea clips the
+    // container at its natural (bottom) position, making translated content
+    // invisible — the root cause of the "keyboard disappears" bug.
+    int parentHeight = (isFullscreenMode() || floating)
+            ? ViewGroup.LayoutParams.MATCH_PARENT
+            : ViewGroup.LayoutParams.WRAP_CONTENT;
+    updateLayoutHeightOf((View) inputArea.getParent(), parentHeight);
+    // Keep BOTTOM gravity even in floating mode — with MATCH_PARENT height on
+    // mFullscreenArea, the container sits at the bottom and its upward
+    // translation stays visible (not clipped).
     updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
+
+    // In floating mode, also make inputArea itself MATCH_PARENT so it doesn't
+    // clip the translated container.
+    if (floating)
+    {
+      updateLayoutHeightOf(inputArea, ViewGroup.LayoutParams.MATCH_PARENT);
+      updateLayoutGravityOf(inputArea, Gravity.BOTTOM);
+    }
 
   }
 

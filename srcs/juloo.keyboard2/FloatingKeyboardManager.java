@@ -151,10 +151,12 @@ public final class FloatingKeyboardManager
     int top = loc[1];
     int right = left + w;
     int bottom = top + h;
+    // DON'T set contentTopInsets/visibleTopInsets — let super.onComputeInsets
+    // keep its default values. Setting contentTopInsets=0 caused the system
+    // to think the IME covers the entire screen, which may have caused the
+    // system to shrink/hide the IME window.
     outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
     outInsets.touchableRegion.set(left, top, right, bottom);
-    outInsets.contentTopInsets = 0;
-    outInsets.visibleTopInsets = 0;
     Log.d(TAG, "computeInsets region=[" + left + "," + top + "," + right + "," + bottom
       + "] translationY=" + container.getTranslationY());
   }
