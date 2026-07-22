@@ -64,6 +64,9 @@ public final class FloatingKeyboardManager
   public void applyPosition(final View container)
   {
     _container = container;
+    Log.d(TAG, "applyPosition CALLED container=" + container
+      + " w=" + container.getWidth() + " h=" + container.getHeight()
+      + " floating_keyboard=" + _config.floating_keyboard);
     // One-shot layout listener
     final View.OnLayoutChangeListener listener = new View.OnLayoutChangeListener()
     {
