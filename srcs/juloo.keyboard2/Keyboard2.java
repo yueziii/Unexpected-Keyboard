@@ -314,10 +314,18 @@ public class Keyboard2 extends InputMethodService
         && _floating_manager != null && _keyboard_container_view != null)
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
-      Logs.debug("Floating: onComputeInsets containerW=" + _keyboard_container_view.getWidth()
+      String msg = "onComputeInsets containerW=" + _keyboard_container_view.getWidth()
         + " containerH=" + _keyboard_container_view.getHeight()
         + " touchable=" + outInsets.touchableInsets
-        + " region=" + outInsets.touchableRegion);
+        + " region=" + outInsets.touchableRegion
+        + " contentTop=" + outInsets.contentTopInsets;
+      Logs.debug("Floating: " + msg);
+      try {
+        java.io.File logFile = new java.io.File(getFilesDir(), "floating_debug.txt");
+        java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
+        fw.write(msg + "\n");
+        fw.close();
+      } catch (Exception e) {}
     }
   }
 

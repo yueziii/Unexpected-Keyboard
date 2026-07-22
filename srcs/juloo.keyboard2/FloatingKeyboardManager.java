@@ -104,6 +104,14 @@ public final class FloatingKeyboardManager
     WindowManager.LayoutParams verify = window.getAttributes();
     Logs.debug("Floating: AFTER setAttributes gravity=" + verify.gravity
       + " x=" + verify.x + " y=" + verify.y + " w=" + verify.width + " h=" + verify.height);
+    // Also write to a file so users without adb can read it
+    try {
+      java.io.File logFile = new java.io.File(_ime.getFilesDir(), "floating_debug.txt");
+      java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
+      fw.write("BEFORE gravity=" + lp.gravity + " x=" + lp.x + " y=" + lp.y + " w=" + lp.width + " h=" + lp.height + "\n");
+      fw.write("AFTER  gravity=" + verify.gravity + " x=" + verify.x + " y=" + verify.y + " w=" + verify.width + " h=" + verify.height + "\n");
+      fw.close();
+    } catch (Exception e) {}
   }
 
     /**

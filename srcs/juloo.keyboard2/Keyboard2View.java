@@ -296,9 +296,18 @@ public class Keyboard2View extends View
       (int)(_tc.row_height * _keyboard.keysHeight
           + _config.marginTop + _marginBottom);
     if (_config.floating_keyboard)
-      Logs.debug("Floating: onMeasure width=" + width + " height=" + height
+    {
+      String msg = "onMeasure width=" + width + " height=" + height
         + " rowHeight=" + _tc.row_height + " keysHeight=" + _keyboard.keysHeight
-        + " specMode=" + specMode + " specSize=" + specSize);
+        + " specMode=" + specMode + " specSize=" + specSize;
+      Logs.debug("Floating: " + msg);
+      try {
+        java.io.File logFile = new java.io.File(getContext().getFilesDir(), "floating_debug.txt");
+        java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
+        fw.write(msg + "\n");
+        fw.close();
+      } catch (Exception e) {}
+    }
     setMeasuredDimension(width, height);
   }
 
