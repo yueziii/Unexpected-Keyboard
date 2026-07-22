@@ -310,6 +310,24 @@ public class Keyboard2 extends InputMethodService
     updateSoftInputWindowLayoutParams();
   }
 
+  @Override
+  public void onConfigureWindow(Window win, boolean isFullscreen,
+      boolean isCandidatesOnly)
+  {
+    if (_config != null && _config.floating_keyboard && _floating_manager != null)
+    {
+      // Floating mode: override the default layout to make the window
+      // WRAP_CONTENT (both dimensions) and freely positioned via gravity + x/y.
+      // The default implementation forces MATCH_PARENT width, which makes the
+      // window cover the whole screen and prevents free positioning.
+      _floating_manager.applyFloatingWindowLayout(win);
+    }
+    else
+    {
+      super.onConfigureWindow(win, isFullscreen, isCandidatesOnly);
+    }
+  }
+
   private void updateSoftInputWindowLayoutParams() {
     final Window window = getWindow().getWindow();
     // On API >= 35, Keyboard2View behaves as edge-to-edge
