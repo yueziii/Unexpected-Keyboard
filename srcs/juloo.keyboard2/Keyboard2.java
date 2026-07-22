@@ -293,15 +293,20 @@ public class Keyboard2 extends InputMethodService
       Logs.debug("Floating: setInputView container=" + v.getClass().getSimpleName()
         + " w=" + v.getLayoutParams().width + " h=" + v.getLayoutParams().height);
       int width = _floating_manager.getKeyboardWidthPx();
-      android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
-      if (lp == null)
-        lp = new android.view.ViewGroup.LayoutParams(width,
+      // Use FrameLayout.LayoutParams since the view is added to mInputFrame
+      // (a FrameLayout). Set gravity to center_horizontal so the narrower
+      // keyboard is centered within the full-width window.
+      android.widget.FrameLayout.LayoutParams lp;
+      if (v.getLayoutParams() instanceof android.widget.FrameLayout.LayoutParams)
+        lp = (android.widget.FrameLayout.LayoutParams) v.getLayoutParams();
+      else
+        lp = new android.widget.FrameLayout.LayoutParams(width,
           ViewGroup.LayoutParams.WRAP_CONTENT);
-      else if (lp.width != width)
-        lp.width = width;
+      lp.width = width;
+      lp.gravity = Gravity.CENTER_HORIZONTAL;
       v.setLayoutParams(lp);
       _floating_manager.attach(v, v.findViewById(R.id.floating_drag_handle));
-      _floating_manager.applyPosition(v);
+      _floating_manager.applyFloatingWindowLayout(getWindow().getWindow());
     }
     v.requestApplyInsets();
   }
@@ -348,19 +353,27 @@ public class Keyboard2 extends InputMethodService
 
     if (_config.floating_keyboard && _floating_manager != null)
     {
-      // Floating mode: position the input area at the top so setX/setY
-      // map to absolute screen coordinates. Touch pass-through is handled
-      // by onComputeInsets.
-      View parent = (View) inputArea.getParent();
-      Logs.debug("Floating: inputArea parent type=" + parent.getClass().getName()
-        + " lp=" + (parent.getLayoutParams() != null ? parent.getLayoutParams().getClass().getName() : "null"));
-      updateLayoutHeightOf(parent,
+      // Floating mode: don't modify inputArea parent layout at all.
+      // Instead, the window's own gravity+x/y are set in applyFloatingWindowLayout
+      // to position the entire window freely on screen.
+      // Keep the default inputArea layout (WRAP_CONTENT + BOTTOM).
+      updateLayoutHeightOf((View) inputArea.getParent(),
           ViewGroup.LayoutParams.WRAP_CONTENT);
-      updateLayoutGravityOf(parent,
-          Gravity.TOP | Gravity.START);
+      updateLayoutGravityOf((View) inputArea.getParent(), Gravity.BOTTOM);
+      // Position the window itself.
+      _floating_manager.applyFloatingWindowLayout(window);
     }
     else
     {
+      // Reset window gravity/x/y that floating mode may have set.
+      WindowManager.LayoutParams lp = window.getAttributes();
+      if (lp != null && lp.gravity != Gravity.BOTTOM)
+      {
+        lp.gravity = Gravity.BOTTOM;
+        lp.x = 0;
+        lp.y = 0;
+        window.setAttributes(lp);
+      }
       updateLayoutHeightOf(
               (View) inputArea.getParent(),
               isFullscreenMode()
@@ -411,16 +424,20 @@ public class Keyboard2 extends InputMethodService
     {
       if (handle != null)
         handle.setVisibility(View.VISIBLE);
-      // Constrain the floating keyboard width.
+      // Constrain the floating keyboard width and center it horizontally
+      // within the full-width window.
       if (_floating_manager != null)
       {
         int width = _floating_manager.getKeyboardWidthPx();
-        android.view.ViewGroup.LayoutParams lp = _keyboard_container_view.getLayoutParams();
-        if (lp != null && lp.width != width)
-        {
-          lp.width = width;
-          _keyboard_container_view.setLayoutParams(lp);
-        }
+        android.widget.FrameLayout.LayoutParams lp;
+        if (_keyboard_container_view.getLayoutParams() instanceof android.widget.FrameLayout.LayoutParams)
+          lp = (android.widget.FrameLayout.LayoutParams) _keyboard_container_view.getLayoutParams();
+        else
+          lp = new android.widget.FrameLayout.LayoutParams(width,
+            ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.width = width;
+        lp.gravity = Gravity.CENTER_HORIZONTAL;
+        _keyboard_container_view.setLayoutParams(lp);
       }
     }
     else
@@ -428,15 +445,15 @@ public class Keyboard2 extends InputMethodService
       if (handle != null)
         handle.setVisibility(View.GONE);
       // Restore full-width layout.
-      android.view.ViewGroup.LayoutParams lp = _keyboard_container_view.getLayoutParams();
-      if (lp != null && lp.width != ViewGroup.LayoutParams.MATCH_PARENT)
-      {
-        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-        _keyboard_container_view.setLayoutParams(lp);
-      }
-      // Reset any translation left over from floating mode.
-      _keyboard_container_view.setX(0);
-      _keyboard_container_view.setY(0);
+      android.widget.FrameLayout.LayoutParams lp;
+      if (_keyboard_container_view.getLayoutParams() instanceof android.widget.FrameLayout.LayoutParams)
+        lp = (android.widget.FrameLayout.LayoutParams) _keyboard_container_view.getLayoutParams();
+      else
+        lp = new android.widget.FrameLayout.LayoutParams(
+          ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+      lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+      lp.gravity = Gravity.NO_GRAVITY;
+      _keyboard_container_view.setLayoutParams(lp);
     }
   }
 

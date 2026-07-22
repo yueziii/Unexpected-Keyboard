@@ -3,25 +3,24 @@ package juloo.keyboard2;
 import android.content.res.Resources;
 import android.inputmethodservice.InputMethodService;
 import android.util.DisplayMetrics;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 
 /**
- * Manages the "floating keyboard" mode: the keyboard is displayed as a
- * movable, free-positioned overlay instead of being docked at the bottom.
+ * Manages the "floating keyboard" mode.
  *
- * How it works:
- *  - The IME window stays full-screen (TYPE_INPUT_METHOD is forced to
- *    MATCH_PARENT by the system), but the input area parent uses
- *    WRAP_CONTENT + Gravity.TOP|START so the keyboard container starts at
- *    the top-left.
- *  - The keyboard container is translated via setX/setY to the desired
- *    floating position.
- *  - onComputeInsets sets TOUCHABLE_INSETS_REGION to only the keyboard's
- *    screen rectangle, so touches outside the keyboard pass through to the
- *    app behind it (the window doesn't block the rest of the screen).
- *  - A drag handle view at the top of the keyboard lets the user move it.
- *  - The position is persisted and restored across sessions.
+ * The IME window's width stays MATCH_PARENT (forced by the system), but its
+ * height is WRAP_CONTENT (default for non-fullscreen IME). The window's
+ * gravity is changed from BOTTOM to TOP|START and x/y position it freely.
+ * onComputeInsets sets TOUCHABLE_INSETS_REGION so only the keyboard rectangle
+ * is touchable — the rest of the window passes touches through.
+ *
+ * The keyboard container width is constrained to the floating width (e.g. 80%
+ * of screen), centered within the full-width window.
  */
 public final class FloatingKeyboardManager
   implements View.OnTouchListener
@@ -29,21 +28,19 @@ public final class FloatingKeyboardManager
   private final Keyboard2 _ime;
   private final Config _config;
 
-  /** The current view being floated (keyboard container or emoji/clipboard pane). */
   private View _container;
-
-  /** The drag handle view (only present on the main keyboard). */
   private View _handle;
 
-  /** Screen dimensions used for clamping and default positioning. */
   private int _screenWidth;
   private int _screenHeight;
 
-  /** Touch tracking for dragging. */
+  private float _posX;
+  private float _posY;
+
   private float _dragStartRawX;
   private float _dragStartRawY;
-  private float _dragStartX;
-  private float _dragStartY;
+  private float _dragStartPosX;
+  private float _dragStartPosY;
   private boolean _isDragging;
 
   public FloatingKeyboardManager(Keyboard2 ime, Config config)
@@ -54,9 +51,10 @@ public final class FloatingKeyboardManager
     DisplayMetrics dm = res.getDisplayMetrics();
     _screenWidth = dm.widthPixels;
     _screenHeight = dm.heightPixels;
+    _posX = _config.floating_pos_x;
+    _posY = _config.floating_pos_y;
   }
 
-  /** Bind a container view and its drag handle (handle may be null). */
   public void attach(View container, View handle)
   {
     _container = container;
@@ -65,7 +63,6 @@ public final class FloatingKeyboardManager
       _handle.setOnTouchListener(this);
   }
 
-  /** Desired keyboard width in pixels, based on the config percentage. */
   public int getKeyboardWidthPx()
   {
     int pct = _config.floating_keyboard_width;
@@ -77,48 +74,58 @@ public final class FloatingKeyboardManager
   public int getScreenWidthPx() { return _screenWidth; }
   public int getScreenHeightPx() { return _screenHeight; }
 
-  /** Apply the saved (or default) floating position to the given container. */
-  public void applyPosition(View container)
+  /**
+   * Position the IME window via its LayoutParams gravity + x/y.
+   * Called whenever the view is set or size changes.
+   */
+  public void applyFloatingWindowLayout(Window window)
   {
-    _container = container;
-    float x = _config.floating_pos_x;
-    float y = _config.floating_pos_y;
+    if (window == null)
+      return;
+    WindowManager.LayoutParams lp = window.getAttributes();
+    if (lp == null)
+      return;
+    // Window stays MATCH_PARENT width (system enforces this for TYPE_INPUT_METHOD)
+    // and WRAP_CONTENT height (default non-fullscreen). We only change gravity
+    // and position.
+    lp.gravity = Gravity.TOP | Gravity.START;
+    float x = _posX;
+    float y = _posY;
     if (x == Float.MIN_VALUE || y == Float.MIN_VALUE)
     {
-      int w = getKeyboardWidthPx();
-      x = Math.max(0, (_screenWidth - w) / 2.f);
-      y = _screenHeight * 0.5f;
+      // Default: centered horizontally, lower portion of screen.
+      x = 0; // window is full-width, keyboard is centered within it
+      y = _screenHeight * 0.45f;
     }
     x = clampX(x);
     y = clampY(y);
-    Logs.debug("Floating: applyPosition x=" + x + " y=" + y
-      + " screenW=" + _screenWidth + " screenH=" + _screenHeight);
-    container.setX(x);
-    container.setY(y);
+    _posX = x;
+    _posY = y;
+    lp.x = (int) x;
+    lp.y = (int) y;
+    window.setAttributes(lp);
+    Logs.debug("Floating: applyFloatingWindowLayout gravity=" + lp.gravity
+      + " x=" + lp.x + " y=" + lp.y + " w=" + lp.width + " h=" + lp.height);
   }
 
   /**
-   * Compute insets for floating mode: set the touchable region to only the
-   * keyboard container's screen rectangle, so the rest of the window passes
-   * touches through to the app behind.
+   * Compute insets: only the keyboard container's screen rectangle is
+   * touchable. The rest of the full-screen window passes touches through.
    */
   public void computeFloatingInsets(InputMethodService.Insets outInsets, View container)
   {
     _container = container;
-    // Get the container's position in screen coordinates.
     int[] loc = new int[2];
     container.getLocationOnScreen(loc);
     int left = loc[0];
     int top = loc[1];
     int right = left + container.getWidth();
     int bottom = top + container.getHeight();
-    // Ensure the region is valid.
     if (right <= left) right = left + getKeyboardWidthPx();
     if (bottom <= top) bottom = top + (_screenHeight / 3);
     outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
     outInsets.touchableRegion.set(left, top, right, bottom);
-    // Don't let the system resize the app for the IME — the floating keyboard
-    // floats over the app content.
+    // Don't resize the app — floating keyboard overlays content.
     outInsets.contentTopInsets = _screenHeight;
     outInsets.visibleTopInsets = _screenHeight;
   }
@@ -128,8 +135,7 @@ public final class FloatingKeyboardManager
     if (_container != null)
     {
       int w = _container.getWidth();
-      if (w > 0)
-        return w;
+      if (w > 0) return w;
     }
     return getKeyboardWidthPx();
   }
@@ -139,20 +145,16 @@ public final class FloatingKeyboardManager
     if (_container != null)
     {
       int h = _container.getHeight();
-      if (h > 0)
-        return h;
+      if (h > 0) return h;
     }
     return _screenHeight / 3;
   }
 
   private float clampX(float x)
   {
-    int w = getContainerWidth();
-    if (x + w > _screenWidth)
-      x = _screenWidth - w;
-    if (x < 0)
-      x = 0;
-    return x;
+    // The window is full-width, so x=0 means keyboard is at left edge.
+    // We don't need to clamp x much since the window covers full width.
+    return Math.max(0, x);
   }
 
   private float clampY(float y)
@@ -160,23 +162,34 @@ public final class FloatingKeyboardManager
     int h = getContainerHeight();
     if (y + h > _screenHeight)
       y = _screenHeight - h;
-    if (y < 0)
-      y = 0;
+    if (y < 0) y = 0;
     return y;
+  }
+
+  private void updateWindowPosition(float x, float y)
+  {
+    _posX = x;
+    _posY = y;
+    Window window = _ime.getWindow().getWindow();
+    if (window == null) return;
+    WindowManager.LayoutParams lp = window.getAttributes();
+    if (lp == null) return;
+    lp.x = (int) x;
+    lp.y = (int) y;
+    window.setAttributes(lp);
   }
 
   @Override
   public boolean onTouch(View v, MotionEvent event)
   {
-    if (_container == null)
-      return false;
+    if (_container == null) return false;
     switch (event.getActionMasked())
     {
       case MotionEvent.ACTION_DOWN:
         _dragStartRawX = event.getRawX();
         _dragStartRawY = event.getRawY();
-        _dragStartX = _container.getX();
-        _dragStartY = _container.getY();
+        _dragStartPosX = _posX;
+        _dragStartPosY = _posY;
         _isDragging = false;
         return true;
       case MotionEvent.ACTION_MOVE:
@@ -187,17 +200,16 @@ public final class FloatingKeyboardManager
           _isDragging = true;
         if (_isDragging)
         {
-          _container.setX(clampX(_dragStartX + dx));
-          _container.setY(clampY(_dragStartY + dy));
+          updateWindowPosition(
+              clampX(_dragStartPosX + dx),
+              clampY(_dragStartPosY + dy));
         }
         return true;
       }
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL:
         if (_isDragging)
-        {
-          _config.save_floating_pos(_container.getX(), _container.getY());
-        }
+          _config.save_floating_pos(_posX, _posY);
         _isDragging = false;
         return true;
     }
