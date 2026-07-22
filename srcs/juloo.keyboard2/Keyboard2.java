@@ -462,6 +462,10 @@ public class Keyboard2 extends InputMethodService
   {
     refresh_config();
     _keyboard_layout_view.setKeyboard(current_layout());
+    // If floating mode was toggled, re-set the input view so the window
+    // layout params are updated immediately.
+    if ("floating_keyboard".equals(_key) || "floating_keyboard_width".equals(_key))
+      setInputView(_keyboard_container_view);
   }
 
   @Override
