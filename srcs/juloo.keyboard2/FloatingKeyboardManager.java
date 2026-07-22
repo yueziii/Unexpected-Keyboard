@@ -85,8 +85,11 @@ public final class FloatingKeyboardManager
     _floatingActive = true;
     // Apply width constraint immediately (affects measurement)
     applyFloatingWidth(container);
-    // Apply translation after layout completes via post()
-    container.post(new Runnable()
+    // Apply translation after layout completes. Use postDelayed to give the
+    // system time to position the IME window at the bottom of the screen
+    // (if post() runs too early, getLocationOnScreen returns (0,0) and the
+    // translation goes in the wrong direction, hiding the keyboard).
+    container.postDelayed(new Runnable()
     {
       @Override
       public void run()
@@ -95,11 +98,11 @@ public final class FloatingKeyboardManager
         {
           applyTranslation(container);
           // Request inset update ONCE after translation so touchable region
-          // matches the new position. This is safe because post() runs once.
+          // matches the new position.
           container.requestApplyInsets();
         }
       }
-    });
+    }, 100);
     debug("applyPosition called, width=" + getKeyboardWidthPx()
       + " screenHeight=" + _screenHeight);
   }
@@ -165,12 +168,20 @@ public final class FloatingKeyboardManager
   {
     int h = container.getHeight();
     if (h <= 0) return;
-    // The container's on-screen position WITHOUT translation (its natural
-    // position at the bottom of the screen). We use getLocationOnScreen then
-    // subtract the current translation to get the un-translated position.
+    // The container's natural position is at the bottom of the screen (the IME
+    // window has BOTTOM gravity). So the natural top = screenHeight - h.
+    // We DON'T use getLocationOnScreen because the window may not be positioned
+    // yet when post() runs, giving us (0,0) and a wrong translation direction.
+    float naturalTop = _screenHeight - h;
+    // Also try getLocationOnScreen as a cross-check; if it gives a valid
+    // position, use it, but fall back to the computed naturalTop.
     int[] loc = new int[2];
     container.getLocationOnScreen(loc);
-    float naturalTop = loc[1] - container.getTranslationY();
+    float screenTop = loc[1] - container.getTranslationY();
+    // If screenTop is 0 (window not positioned yet) and h < screenHeight,
+    // use the computed naturalTop instead.
+    if (screenTop > 0 && screenTop < _screenHeight)
+      naturalTop = screenTop;
     // Default position: 40% from top
     float targetY = (_posY == Float.MIN_VALUE) ? _screenHeight * 0.4f : _posY;
     // Clamp so keyboard stays on screen
@@ -178,8 +189,8 @@ public final class FloatingKeyboardManager
     if (targetY < 0) targetY = 0;
     float translation = targetY - naturalTop;
     container.setTranslationY(translation);
-    debug("applyTranslation naturalTop=" + naturalTop + " targetY=" + targetY
-      + " h=" + h + " translationY=" + translation
+    debug("applyTranslation naturalTop=" + naturalTop + " screenTop=" + screenTop
+      + " targetY=" + targetY + " h=" + h + " translationY=" + translation
       + " loc[1]=" + loc[1] + " curTranslationY=" + container.getTranslationY());
   }
 
@@ -218,10 +229,11 @@ public final class FloatingKeyboardManager
       outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
       outInsets.touchableRegion.set(left, top, right, bottom);
     }
-    // DO NOT set contentTopInsets/visibleTopInsets — leave them as the
-    // defaults from super.onComputeInsets(). Setting them to screenHeight
-    // caused the system to think the IME covers the whole screen and it
-    // stopped rendering the keyboard.
+    // In floating mode, the keyboard should NOT push the app content up.
+    // Set contentTopInsets=0 so the app gets the full screen height.
+    // visibleTopInsets=0 means no visual inset for the app.
+    outInsets.contentTopInsets = 0;
+    outInsets.visibleTopInsets = 0;
     debug("computeInsets loc=[" + left + "," + top + "] w=" + w
       + " h=" + h + " region=[" + left + "," + top + "," + right + "," + bottom + "]");
   }
