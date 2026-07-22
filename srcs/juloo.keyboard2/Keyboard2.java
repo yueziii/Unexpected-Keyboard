@@ -290,6 +290,8 @@ public class Keyboard2 extends InputMethodService
     // outside the keyboard are passed through via onComputeInsets).
     if (_floating_manager != null && _config.floating_keyboard)
     {
+      Logs.debug("Floating: setInputView container=" + v.getClass().getSimpleName()
+        + " w=" + v.getLayoutParams().width + " h=" + v.getLayoutParams().height);
       int width = _floating_manager.getKeyboardWidthPx();
       android.view.ViewGroup.LayoutParams lp = v.getLayoutParams();
       if (lp == null)
@@ -321,6 +323,10 @@ public class Keyboard2 extends InputMethodService
         && _floating_manager != null && _keyboard_container_view != null)
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
+      Logs.debug("Floating: onComputeInsets containerW=" + _keyboard_container_view.getWidth()
+        + " containerH=" + _keyboard_container_view.getHeight()
+        + " touchable=" + outInsets.touchableInsets
+        + " region=" + outInsets.touchableRegion);
     }
   }
 
@@ -342,15 +348,15 @@ public class Keyboard2 extends InputMethodService
 
     if (_config.floating_keyboard && _floating_manager != null)
     {
-      // Floating mode: the window stays full-screen (TYPE_INPUT_METHOD is
-      // forced to MATCH_PARENT by the system), but the input area's parent
-      // uses WRAP_CONTENT + TOP|START so the keyboard container can be
-      // translated via setX/setY. Touch pass-through is handled by
-      // onComputeInsets which sets a touchable region covering only the
-      // keyboard rectangle.
-      updateLayoutHeightOf((View) inputArea.getParent(),
+      // Floating mode: position the input area at the top so setX/setY
+      // map to absolute screen coordinates. Touch pass-through is handled
+      // by onComputeInsets.
+      View parent = (View) inputArea.getParent();
+      Logs.debug("Floating: inputArea parent type=" + parent.getClass().getName()
+        + " lp=" + (parent.getLayoutParams() != null ? parent.getLayoutParams().getClass().getName() : "null"));
+      updateLayoutHeightOf(parent,
           ViewGroup.LayoutParams.WRAP_CONTENT);
-      updateLayoutGravityOf((View) inputArea.getParent(),
+      updateLayoutGravityOf(parent,
           Gravity.TOP | Gravity.START);
     }
     else

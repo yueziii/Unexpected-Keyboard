@@ -295,6 +295,10 @@ public class Keyboard2View extends View
     int height =
       (int)(_tc.row_height * _keyboard.keysHeight
           + _config.marginTop + _marginBottom);
+    if (_config.floating_keyboard)
+      Logs.debug("Floating: onMeasure width=" + width + " height=" + height
+        + " rowHeight=" + _tc.row_height + " keysHeight=" + _keyboard.keysHeight
+        + " specMode=" + specMode + " specSize=" + specSize);
     setMeasuredDimension(width, height);
   }
 

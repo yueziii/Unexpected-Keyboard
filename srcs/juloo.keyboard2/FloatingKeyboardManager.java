@@ -91,6 +91,8 @@ public final class FloatingKeyboardManager
     }
     x = clampX(x);
     y = clampY(y);
+    Logs.debug("Floating: applyPosition x=" + x + " y=" + y
+      + " screenW=" + _screenWidth + " screenH=" + _screenHeight);
     container.setX(x);
     container.setY(y);
   }
