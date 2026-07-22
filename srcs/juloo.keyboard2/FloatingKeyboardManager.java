@@ -100,7 +100,8 @@ public final class FloatingKeyboardManager
     boolean changed = false;
     // Set width to configured %
     if (lp.width != widthPx) { lp.width = widthPx; changed = true; }
-    // Use TOP|START gravity so x/y position from top-left
+    // Try TOP|START gravity with x/y offsets. If the system ignores this for
+    // TYPE_INPUT_METHOD, the keyboard will stay at bottom but narrowed.
     int targetGravity = Gravity.TOP | Gravity.START;
     if (lp.gravity != targetGravity) { lp.gravity = targetGravity; changed = true; }
     if (lp.x != (int)targetX) { lp.x = (int)targetX; changed = true; }
@@ -111,6 +112,25 @@ public final class FloatingKeyboardManager
     if (changed)
     {
       window.setAttributes(lp);
+    }
+    // Also set the container translationY as a fallback in case the system
+    // ignores TOP|START gravity for TYPE_INPUT_METHOD windows. We compute the
+    // translation from the saved _posY (same as targetY, but a field).
+    if (_container != null)
+    {
+      final View container = _container;
+      final float savedTargetY = targetY;
+      container.postDelayed(new Runnable() {
+        @Override
+        public void run() {
+          if (container.getHeight() > 0) {
+            float naturalTop = _screenHeight - container.getHeight();
+            float trans = savedTargetY - naturalTop;
+            container.setTranslationY(trans);
+            debug("fallback translationY=" + trans + " naturalTop=" + naturalTop);
+          }
+        }
+      }, 200);
     }
     debug("applyFloatingWindow width=" + widthPx + " x=" + (int)targetX
       + " y=" + (int)targetY + " gravity=TOP|START changed=" + changed
@@ -134,6 +154,9 @@ public final class FloatingKeyboardManager
     if (lp.y != 0) { lp.y = 0; changed = true; }
     if (changed)
       window.setAttributes(lp);
+    // Reset translationY on container
+    if (_container != null)
+      _container.setTranslationY(0f);
     debug("disableFloatingWindow: reset to MATCH_PARENT/BOTTOM");
   }
 
