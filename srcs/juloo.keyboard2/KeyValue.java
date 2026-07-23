@@ -25,6 +25,7 @@ public final class KeyValue implements Comparable<KeyValue>
     SWITCH_VOICE_TYPING,
     SWITCH_VOICE_TYPING_CHOOSER,
     HIDE_SELF,
+    TOGGLE_FLOATING,
   }
 
   // Must be evaluated in the reverse order of their values.
@@ -544,6 +545,7 @@ public final class KeyValue implements Comparable<KeyValue>
   public static final KeyValue CHANGE_METHOD_NEXT = eventKey(0xE009, Event.CHANGE_METHOD_NEXT, FLAG_SMALLER_FONT);
   public static final KeyValue VOICE_TYPING_CHOOSER = eventKey(0xE015, Event.SWITCH_VOICE_TYPING_CHOOSER, FLAG_SMALLER_FONT);
   public static final KeyValue COMPOSE_CANCEL = placeholderKey(0xE01A, Placeholder.COMPOSE_CANCEL, FLAG_SECONDARY);
+  public static final KeyValue TOGGLE_FLOATING = eventKey(0xE300, Event.TOGGLE_FLOATING, FLAG_SMALLER_FONT);
 
   public static KeyValue getSpecialKeyByName(String name)
   {
@@ -656,6 +658,7 @@ public final class KeyValue implements Comparable<KeyValue>
       case "capslock": return eventKey(0xE012, Event.CAPS_LOCK, 0);
       case "voice_typing": return eventKey(0xE015, Event.SWITCH_VOICE_TYPING, FLAG_SMALLER_FONT);
       case "voice_typing_chooser": return VOICE_TYPING_CHOOSER;
+      case "toggle_floating": return TOGGLE_FLOATING;
       case "complete_first": return statefulKey(Stateful.Complete_first);
       case "complete_second": return statefulKey(Stateful.Complete_second);
       case "complete_third": return statefulKey(Stateful.Complete_third);
