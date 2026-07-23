@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:hardwareAccelerated="false" android:orientation="vertical" android:background="?attr/colorKeyboard">
-  <View android:id="@+id/floating_drag_handle" android:layout_width="match_parent" android:layout_height="22dp" android:background="?attr/colorKey" android:foreground="@drawable/floating_drag_handle_fg" android:foregroundGravity="center" android:visibility="gone"/>
-  <juloo.keyboard2.suggestions.CandidatesView android:id="@+id/candidates_view" style="@style/candidates_view">
-    <TextView android:id="@+id/candidates_emoji" style="@style/candidates_emoji"/>
-    <TextView android:id="@+id/candidates_left" style="@style/candidates_item"/>
-    <TextView android:id="@+id/candidates_middle" style="@style/candidates_item"/>
-    <TextView android:id="@+id/candidates_right" style="@style/candidates_item"/>
-  </juloo.keyboard2.suggestions.CandidatesView>
-  <juloo.keyboard2.Keyboard2View android:id="@+id/keyboard_view" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-</LinearLayout>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:hardwareAccelerated="false" android:background="?attr/colorKeyboard">
+  <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="?attr/colorKeyboard">
+    <LinearLayout android:id="@+id/floating_drag_handle" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="22dp" android:background="?attr/colorKey" android:visibility="gone">
+      <ImageButton android:id="@+id/floating_close_btn" android:src="@drawable/ic_collapse_down" android:layout_width="22dp" android:layout_height="22dp" android:background="?attr/colorKey" android:scaleType="center" android:contentDescription="@string/pref_floating_close_btn"/>
+      <View android:id="@+id/floating_drag_handle_area" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:foreground="@drawable/floating_drag_handle_fg" android:foregroundGravity="center"/>
+    </LinearLayout>
+    <juloo.keyboard2.suggestions.CandidatesView android:id="@+id/candidates_view" style="@style/candidates_view">
+      <TextView android:id="@+id/candidates_emoji" style="@style/candidates_emoji"/>
+      <TextView android:id="@+id/candidates_left" style="@style/candidates_item"/>
+      <TextView android:id="@+id/candidates_middle" style="@style/candidates_item"/>
+      <TextView android:id="@+id/candidates_right" style="@style/candidates_item"/>
+    </juloo.keyboard2.suggestions.CandidatesView>
+    <juloo.keyboard2.Keyboard2View android:id="@+id/keyboard_view" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+  </LinearLayout>
+  <ImageView android:id="@+id/floating_resize_handle" android:src="@drawable/floating_resize_handle" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="bottom|end" android:layout_marginEnd="2dp" android:layout_marginBottom="2dp" android:visibility="gone"/>
+</FrameLayout>
