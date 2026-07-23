@@ -233,12 +233,24 @@ public class Keyboard2 extends InputMethodService
     Drawable bg = _keyboard_container_view.getBackground().mutate();
     bg.setAlpha(_config.keyboardOpacity);
     _keyboard_container_view.setBackground(bg);
-    // Show/hide drag handle for floating mode
+    // Show/hide drag handle and resize handle for floating mode
     View handle = _keyboard_container_view.findViewById(R.id.floating_drag_handle);
     if (handle != null)
       handle.setVisibility(_config.floating_keyboard ? View.VISIBLE : View.GONE);
+    View resizeHandle = _keyboard_container_view.findViewById(R.id.floating_resize_handle);
+    if (resizeHandle != null)
+      resizeHandle.setVisibility(_config.floating_keyboard ? View.VISIBLE : View.GONE);
     _keyboard_layout_view.reset();
     refresh_candidates_view();
+  }
+
+  /** Re-measure the keyboard after a floating resize. Called by
+      [FloatingKeyboardManager] during resize drag. */
+  void refresh_floating_keyboard()
+  {
+    _keyboard_layout_view.reset();
+    _keyboard_layout_view.setKeyboard(current_layout());
+    _keyboard_container_view.requestLayout();
   }
 
   private KeyboardData refresh_special_layout()
@@ -331,6 +343,33 @@ public class Keyboard2 extends InputMethodService
     {
       updateLayoutHeightOf(inputArea, ViewGroup.LayoutParams.MATCH_PARENT);
       updateLayoutGravityOf(inputArea, Gravity.BOTTOM);
+      // In floating mode, hide the IME caption bar to prevent the 126px
+      // navigation bar area from being reported as IME insets to the app.
+      // The NavigationBarController creates a captionBar InsetsSource covering
+      // the bottom ~126px (navigation_bar_frame_height). WMS uses this area as
+      // the IME insets source frame, causing the app to compress/pan by ~126px.
+      // By hiding the caption bar type, the NavigationBarFrame visibility
+      // becomes GONE (per its OnApplyWindowInsetsListener), and the caption bar
+      // source is removed from the insets state.
+      View decor = window.getDecorView();
+      if (decor != null && VERSION.SDK_INT >= 35)
+      {
+        android.view.WindowInsetsController ic = decor.getWindowInsetsController();
+        if (ic != null)
+          ic.hide(android.view.WindowInsets.Type.captionBar());
+      }
+    }
+    else
+    {
+      // Non-floating mode: re-show the caption bar so the IME navigation bar
+      // buttons are visible when the keyboard is docked at the bottom.
+      View decor = window.getDecorView();
+      if (decor != null && VERSION.SDK_INT >= 35)
+      {
+        android.view.WindowInsetsController ic = decor.getWindowInsetsController();
+        if (ic != null)
+          ic.show(android.view.WindowInsets.Type.captionBar());
+      }
     }
 
   }
@@ -399,7 +438,8 @@ public class Keyboard2 extends InputMethodService
   {
     refresh_config();
     _keyboard_layout_view.setKeyboard(current_layout());
-    if ("floating_keyboard".equals(_key) || "floating_keyboard_width".equals(_key))
+    if ("floating_keyboard".equals(_key) || "floating_keyboard_width".equals(_key)
+        || "floating_keyboard_height".equals(_key))
       setInputView(_keyboard_container_view);
   }
 
@@ -540,6 +580,13 @@ public class Keyboard2 extends InputMethodService
         case HIDE_SELF:
           Keyboard2.this.requestHideSelf(0);
           break;
+        case TOGGLE_FLOATING:
+        {
+          SharedPreferences p = Config.globalPrefs();
+          boolean current = p.getBoolean("floating_keyboard", false);
+          p.edit().putBoolean("floating_keyboard", !current).commit();
+          break;
+        }
       }
     }
 
