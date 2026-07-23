@@ -19,7 +19,8 @@ import android.widget.LinearLayout;
  *
  * onComputeInsets sets a touchableRegion matching the keyboard's on-screen
  * position so touches outside the keyboard pass through to the app behind.
- * contentTopInsets is set to 0 so the app window is NOT resized.
+ * contentTopInsets is set to screenHeight so the system computes
+ * IME height = 0, preventing app window resize/pan.
  *
  * Dragging is handled by a drag handle View at the top of the keyboard layout.
  */
@@ -30,6 +31,7 @@ public final class FloatingKeyboardManager
   private final Config _config;
   private View _container;
   private View _handle;
+  private View _resizeHandle;
   private int _screenWidth;
   private int _screenHeight;
   /** Saved position: top-left corner in screen coordinates. */
@@ -44,6 +46,22 @@ public final class FloatingKeyboardManager
   private float _dragStartPosX;
   private float _dragStartPosY;
   private boolean _isDragging;
+
+  /** Minimum floating width as percentage of screen width. */
+  private static final int MIN_WIDTH_PCT = 40;
+  /** Maximum floating width as percentage of screen width. */
+  private static final int MAX_WIDTH_PCT = 100;
+  /** Minimum floating height as percentage of screen height. */
+  private static final int MIN_HEIGHT_PCT = 10;
+  /** Maximum floating height as percentage of screen height. */
+  private static final int MAX_HEIGHT_PCT = 80;
+
+  // Resize state
+  private boolean _isResizing;
+  private float _resizeStartRawX;
+  private float _resizeStartRawY;
+  private int _resizeStartWidthPx;
+  private int _resizeStartHeightPx;
 
   public FloatingKeyboardManager(Keyboard2 ime, Config config)
   {
@@ -64,8 +82,49 @@ public final class FloatingKeyboardManager
     _handle = handle;
     if (_handle != null)
     {
-      _handle.setOnTouchListener(this);
-      _handle.setClickable(true);
+      // The handle is a LinearLayout containing a close button and a drag area.
+      // Find the drag area inside it.
+      View dragArea = _handle;
+      if (handle instanceof ViewGroup)
+      {
+        View found = ((ViewGroup)handle).findViewById(R.id.floating_drag_handle_area);
+        if (found != null)
+          dragArea = found;
+      }
+      dragArea.setOnTouchListener(this);
+      dragArea.setClickable(true);
+      // Find and wire the close button
+      if (handle instanceof ViewGroup)
+      {
+        View closeBtn = ((ViewGroup)handle).findViewById(R.id.floating_close_btn);
+        if (closeBtn != null)
+        {
+          closeBtn.setOnClickListener(new View.OnClickListener()
+          {
+            @Override
+            public void onClick(View v)
+            {
+              _ime.requestHideSelf(0);
+            }
+          });
+        }
+      }
+    }
+    // Find and wire the resize handle
+    if (container instanceof ViewGroup)
+    {
+      _resizeHandle = ((ViewGroup)container).findViewById(R.id.floating_resize_handle);
+      if (_resizeHandle != null)
+      {
+        _resizeHandle.setOnTouchListener(new View.OnTouchListener()
+        {
+          @Override
+          public boolean onTouch(View v, MotionEvent event)
+          {
+            return onResizeTouch(event);
+          }
+        });
+      }
     }
   }
 
@@ -240,7 +299,7 @@ public final class FloatingKeyboardManager
    * Compute insets for floating mode.
    * Sets touchableRegion to the keyboard's on-screen rect.
    * If layout hasn't happened yet, use estimated values.
-   * contentTopInsets = 0 so the app window keeps full height.
+   * contentTopInsets = screenHeight so the app window keeps full height.
    */
   public void computeFloatingInsets(InputMethodService.Insets outInsets, View container)
   {
@@ -274,8 +333,8 @@ public final class FloatingKeyboardManager
     }
 
     // Floating keyboard: do NOT resize the app window.
-    outInsets.contentTopInsets = 0;
-    outInsets.visibleTopInsets = 0;
+    outInsets.contentTopInsets = _screenHeight;
+    outInsets.visibleTopInsets = _screenHeight;
     // Restrict touch to the keyboard area so touches outside pass through
     // to the app behind.
     if (right > left && bottom > top)
@@ -335,6 +394,89 @@ public final class FloatingKeyboardManager
         if (_isDragging)
           _config.save_floating_pos(_posX, _posY);
         _isDragging = false;
+        return true;
+    }
+    return false;
+  }
+
+  // --- Resize handling ---
+
+  private boolean onResizeTouch(MotionEvent event)
+  {
+    if (_container == null) return false;
+    switch (event.getActionMasked())
+    {
+      case MotionEvent.ACTION_DOWN:
+      {
+        _resizeStartRawX = event.getRawX();
+        _resizeStartRawY = event.getRawY();
+        _resizeStartWidthPx = _container.getWidth();
+        _resizeStartHeightPx = _container.getHeight();
+        _isResizing = false;
+        return true;
+      }
+      case MotionEvent.ACTION_MOVE:
+      {
+        float dx = event.getRawX() - _resizeStartRawX;
+        float dy = event.getRawY() - _resizeStartRawY;
+        if (!_isResizing && (Math.abs(dx) > 8 || Math.abs(dy) > 8))
+          _isResizing = true;
+        if (_isResizing)
+        {
+          // Compute new width in pixels
+          int newWidthPx = _resizeStartWidthPx + (int) dx;
+          int minWidthPx = _screenWidth * MIN_WIDTH_PCT / 100;
+          int maxWidthPx = _screenWidth * MAX_WIDTH_PCT / 100;
+          newWidthPx = Math.max(minWidthPx, Math.min(newWidthPx, maxWidthPx));
+
+          // Compute new height in pixels
+          int newHeightPx = _resizeStartHeightPx + (int) dy;
+          int minHeightPx = _screenHeight * MIN_HEIGHT_PCT / 100;
+          int maxHeightPx = _screenHeight * MAX_HEIGHT_PCT / 100;
+          newHeightPx = Math.max(minHeightPx, Math.min(newHeightPx, maxHeightPx));
+
+          // Convert height to percentage and update config + keyboard
+          int heightPct = newHeightPx * 100 / _screenHeight;
+          heightPct = Math.max(MIN_HEIGHT_PCT, Math.min(heightPct, MAX_HEIGHT_PCT));
+          _config.floating_keyboard_height = heightPct;
+          _config.keyboard_rows_height_pixels = _screenHeight * heightPct / 395;
+
+          // Convert width to percentage
+          int widthPct = newWidthPx * 100 / _screenWidth;
+          widthPct = Math.max(MIN_WIDTH_PCT, Math.min(widthPct, MAX_WIDTH_PCT));
+          _config.floating_keyboard_width = widthPct;
+          _floatWidth = _screenWidth * widthPct / 100;
+
+          // Apply new width to container
+          applyContainerWidth(_container);
+
+          // Force keyboard to re-measure with new height
+          _ime.refresh_floating_keyboard();
+
+          // Re-clamp position for new size
+          int w = _container.getWidth();
+          int h = _container.getHeight();
+          if (w > 0 && h > 0)
+          {
+            _posX = clampX(_posX, w);
+            _posY = clampY(_posY, h);
+            int[] curLoc = new int[2];
+            _container.getLocationOnScreen(curLoc);
+            float naturalLeft = curLoc[0] - _container.getTranslationX();
+            float naturalTop = curLoc[1] - _container.getTranslationY();
+            _container.setTranslationX(_posX - naturalLeft);
+            _container.setTranslationY(_posY - naturalTop);
+          }
+          _container.requestApplyInsets();
+        }
+        return true;
+      }
+      case MotionEvent.ACTION_UP:
+      case MotionEvent.ACTION_CANCEL:
+        if (_isResizing)
+          _config.save_floating_size(_config.floating_keyboard_width,
+              _config.floating_keyboard_height);
+        _isResizing = false;
         return true;
     }
     return false;
