@@ -105,6 +105,8 @@ public final class Config
   public float floating_pos_x = Float.MIN_VALUE;
   /** Saved Y position of the floating keyboard, in pixels from the top. [Float.MIN_VALUE] means unset. */
   public float floating_pos_y = Float.MIN_VALUE;
+  /** Height of the floating keyboard, as a percentage of screen height (10-80). */
+  public int floating_keyboard_height = 35;
 
   private Config(SharedPreferences prefs, Resources res,
       Boolean foldableUnfolded, Dictionaries dicts)
@@ -213,7 +215,13 @@ public final class Config
     floating_keyboard_width = _prefs.getInt("floating_keyboard_width", 80);
     floating_pos_x = _prefs.getFloat("floating_pos_x", Float.MIN_VALUE);
     floating_pos_y = _prefs.getFloat("floating_pos_y", Float.MIN_VALUE);
+    floating_keyboard_height = _prefs.getInt("floating_keyboard_height", 35);
     split_layout = get_split_layout();
+    // In floating mode, override keyboard height with the floating-specific value
+    if (floating_keyboard)
+    {
+      keyboard_rows_height_pixels = screenHeightPixels * floating_keyboard_height / 395;
+    }
   }
 
   public int get_current_layout()
@@ -243,6 +251,17 @@ public final class Config
     SharedPreferences.Editor e = _prefs.edit();
     e.putFloat("floating_pos_x", x);
     e.putFloat("floating_pos_y", y);
+    e.apply();
+  }
+
+  /** Persist the floating keyboard size so it's restored next time. */
+  public void save_floating_size(int widthPct, int heightPct)
+  {
+    floating_keyboard_width = widthPct;
+    floating_keyboard_height = heightPct;
+    SharedPreferences.Editor e = _prefs.edit();
+    e.putInt("floating_keyboard_width", widthPct);
+    e.putInt("floating_keyboard_height", heightPct);
     e.apply();
   }
 
