@@ -225,10 +225,21 @@ public final class Config
     floating_keyboard_height = _prefs.getInt("floating_keyboard_height" + fs, 35);
     split_layout = get_split_layout();
     // In floating mode, override keyboard height and disable split layout
+    // so the keyboard looks the same in portrait and landscape.
     if (floating_keyboard)
     {
       keyboard_rows_height_pixels = screenHeightPixels * floating_keyboard_height / 395;
       split_layout = false;
+      // Disable the landscape-only character size scaling so the floating
+      // keyboard has the same font size in portrait and landscape.
+      characterSize = _prefs.getFloat("character_size", 1.15f);
+      // Disable the landscape numpad so the floating keyboard layout is
+      // consistent across orientations.
+      show_numpad = "always".equals(show_numpad_s);
+      // Use the portrait horizontal margin (3dp) instead of the landscape
+      // margin (28dp) so the floating keyboard has the same side spacing in
+      // portrait and landscape.
+      horizontal_margin = get_dip_pref(dm, "horizontal_margin_portrait", 3);
       // Ensure the keyboard's bottom margin is large enough to accommodate
       // the floating handle bar (22dp) so the overlay handle sits within the
       // keyboard's own bottom margin area instead of adding extra height.

@@ -272,8 +272,18 @@ public class Keyboard2View extends View
     int specSize = android.view.View.MeasureSpec.getSize(wSpec);
     if (specMode == android.view.View.MeasureSpec.EXACTLY && specSize > 0 && specSize < width)
       width = specSize;
-    _marginLeft = Math.max(_config.horizontal_margin, _insets_left);
-    _marginRight = Math.max(_config.horizontal_margin, _insets_right);
+    // In floating mode, ignore system insets (cutout/navigation bars) so the
+    // keyboard content is symmetric and centered within the floating window.
+    if (_config.floating_keyboard)
+    {
+      _marginLeft = _config.horizontal_margin;
+      _marginRight = _config.horizontal_margin;
+    }
+    else
+    {
+      _marginLeft = Math.max(_config.horizontal_margin, _insets_left);
+      _marginRight = Math.max(_config.horizontal_margin, _insets_right);
+    }
     _marginBottom = _config.margin_bottom + _insets_bottom;
     _keyWidth = (width - _marginLeft - _marginRight) / _keyboard.keysWidth;
     _tc = new Theme.Computed(_theme, _config, _keyWidth, _keyboard);
