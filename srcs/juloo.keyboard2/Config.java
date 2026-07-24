@@ -107,6 +107,8 @@ public final class Config
   public float floating_pos_y = Float.MIN_VALUE;
   /** Height of the floating keyboard, as a percentage of screen height (10-80). */
   public int floating_keyboard_height = 35;
+  /** Whether the floating size/position fields are for the unfolded foldable state. */
+  private boolean _floating_for_unfolded = false;
 
   private Config(SharedPreferences prefs, Resources res,
       Boolean foldableUnfolded, Dictionaries dicts)
@@ -212,15 +214,26 @@ public final class Config
     float screen_width_dp = dm.widthPixels / dm.density;
     wide_screen = screen_width_dp >= WIDE_DEVICE_THRESHOLD;
     floating_keyboard = _prefs.getBoolean("floating_keyboard", false);
-    floating_keyboard_width = _prefs.getInt("floating_keyboard_width", 80);
-    floating_pos_x = _prefs.getFloat("floating_pos_x", Float.MIN_VALUE);
-    floating_pos_y = _prefs.getFloat("floating_pos_y", Float.MIN_VALUE);
-    floating_keyboard_height = _prefs.getInt("floating_keyboard_height", 35);
+    // Read fold-state-specific floating size/position. Folded and unfolded
+    // states have separate values so adjusting in one state doesn't make the
+    // keyboard huge when switching to the other.
+    _floating_for_unfolded = foldable_unfolded;
+    String fs = foldable_unfolded ? "_unfolded" : "";
+    floating_keyboard_width = _prefs.getInt("floating_keyboard_width" + fs, 80);
+    floating_pos_x = _prefs.getFloat("floating_pos_x" + fs, Float.MIN_VALUE);
+    floating_pos_y = _prefs.getFloat("floating_pos_y" + fs, Float.MIN_VALUE);
+    floating_keyboard_height = _prefs.getInt("floating_keyboard_height" + fs, 35);
     split_layout = get_split_layout();
-    // In floating mode, override keyboard height with the floating-specific value
+    // In floating mode, override keyboard height and disable split layout
     if (floating_keyboard)
     {
       keyboard_rows_height_pixels = screenHeightPixels * floating_keyboard_height / 395;
+      split_layout = false;
+      // Ensure the keyboard's bottom margin is large enough to accommodate
+      // the floating handle bar (22dp) so the overlay handle sits within the
+      // keyboard's own bottom margin area instead of adding extra height.
+      if (margin_bottom < 22f)
+        margin_bottom = 22f;
     }
   }
 
@@ -248,9 +261,10 @@ public final class Config
   {
     floating_pos_x = x;
     floating_pos_y = y;
+    String fs = _floating_for_unfolded ? "_unfolded" : "";
     SharedPreferences.Editor e = _prefs.edit();
-    e.putFloat("floating_pos_x", x);
-    e.putFloat("floating_pos_y", y);
+    e.putFloat("floating_pos_x" + fs, x);
+    e.putFloat("floating_pos_y" + fs, y);
     e.apply();
   }
 
@@ -259,9 +273,10 @@ public final class Config
   {
     floating_keyboard_width = widthPct;
     floating_keyboard_height = heightPct;
+    String fs = _floating_for_unfolded ? "_unfolded" : "";
     SharedPreferences.Editor e = _prefs.edit();
-    e.putInt("floating_keyboard_width", widthPct);
-    e.putInt("floating_keyboard_height", heightPct);
+    e.putInt("floating_keyboard_width" + fs, widthPct);
+    e.putInt("floating_keyboard_height" + fs, heightPct);
     e.apply();
   }
 

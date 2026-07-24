@@ -177,4 +177,5 @@
   <string name="pref_floating_reset_position">Reset position</string>
   <string name="pref_floating_keyboard_height">Floating keyboard height</string>
   <string name="pref_floating_close_btn">Close keyboard</string>
+  <string name="pref_floating_resize_btn">Resize keyboard</string>
 </resources>

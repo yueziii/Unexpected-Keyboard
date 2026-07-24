@@ -465,7 +465,11 @@ public class Keyboard2View extends View
       return;
     float textSize = scaleTextSize(kv, false);
     Paint p = tc.sublabel_paint(kv.hasFlagsAny(KeyValue.FLAG_KEY_FONT), labelColor(kv, isKeyDown, true), textSize, a);
-    float subPadding = _config.keyPadding;
+    // Use extra padding for smaller-font sublabels (e.g. icon keys) so they
+    // don't sit too close to the key edge, matching the visual balance of
+    // full-size sublabels.
+    float subPadding = kv.hasFlagsAny(KeyValue.FLAG_SMALLER_FONT)
+        ? _config.keyPadding * 2f : _config.keyPadding;
     if (v == Vertical.CENTER)
       y += (keyH - p.ascent() - p.descent()) / 2f;
     else

@@ -160,7 +160,7 @@ public class Keyboard2 extends InputMethodService
     _candidates_view = (CandidatesView)_keyboard_container_view.findViewById(R.id.candidates_view);
     if (_floating_manager != null)
     {
-      View handle = _keyboard_container_view.findViewById(R.id.floating_drag_handle);
+      View handle = _keyboard_container_view.findViewById(R.id.floating_bottom_handle);
       _floating_manager.attach(_keyboard_container_view, handle);
     }
   }
@@ -234,12 +234,17 @@ public class Keyboard2 extends InputMethodService
     bg.setAlpha(_config.keyboardOpacity);
     _keyboard_container_view.setBackground(bg);
     // Show/hide drag handle and resize handle for floating mode
-    View handle = _keyboard_container_view.findViewById(R.id.floating_drag_handle);
+    View handle = _keyboard_container_view.findViewById(R.id.floating_bottom_handle);
     if (handle != null)
       handle.setVisibility(_config.floating_keyboard ? View.VISIBLE : View.GONE);
-    View resizeHandle = _keyboard_container_view.findViewById(R.id.floating_resize_handle);
-    if (resizeHandle != null)
-      resizeHandle.setVisibility(_config.floating_keyboard ? View.VISIBLE : View.GONE);
+    // Resize handle is now inside the bottom handle bar, shown/hidden with it
+    // Update floating manager screen size on config changes (e.g. fold/unfold)
+    // and re-apply position to clamp within new screen bounds
+    if (_floating_manager != null && _config.floating_keyboard)
+    {
+      _floating_manager.updateScreenSize();
+      _floating_manager.applyPosition(_keyboard_container_view);
+    }
     _keyboard_layout_view.reset();
     refresh_candidates_view();
   }

@@ -67,7 +67,7 @@
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_floating">
     <CheckBoxPreference android:key="floating_keyboard" android:title="@string/pref_floating_keyboard_title" android:summary="@string/pref_floating_keyboard_summary" android:defaultValue="false"/>
-    <juloo.keyboard2.prefs.IntSlideBarPreference android:dependency="floating_keyboard" android:key="floating_keyboard_width" android:title="@string/pref_floating_keyboard_width" android:summary="%s%%" android:defaultValue="80" min="40" max="100"/>
+    <juloo.keyboard2.prefs.IntSlideBarPreference android:dependency="floating_keyboard" android:key="floating_keyboard_width" android:title="@string/pref_floating_keyboard_width" android:summary="%s%%" android:defaultValue="80" min="40" max="90"/>
     <juloo.keyboard2.prefs.IntSlideBarPreference android:dependency="floating_keyboard" android:key="floating_keyboard_height" android:title="@string/pref_floating_keyboard_height" android:summary="%s%%" android:defaultValue="35" min="10" max="80"/>
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_clipboard">

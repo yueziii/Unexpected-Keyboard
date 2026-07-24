@@ -22,7 +22,8 @@ import android.widget.LinearLayout;
  * contentTopInsets is set to screenHeight so the system computes
  * IME height = 0, preventing app window resize/pan.
  *
- * Dragging is handled by a drag handle View at the top of the keyboard layout.
+ * Dragging is handled by a drag handle View at the bottom of the keyboard
+ * layout, alongside the close button and resize handle.
  */
 public final class FloatingKeyboardManager
   implements View.OnTouchListener
@@ -34,6 +35,8 @@ public final class FloatingKeyboardManager
   private View _resizeHandle;
   private int _screenWidth;
   private int _screenHeight;
+  /** Top offset to avoid the status/notification bar area. */
+  private int _statusBarHeight;
   /** Saved position: top-left corner in screen coordinates. */
   private float _posX;
   private float _posY;
@@ -49,12 +52,14 @@ public final class FloatingKeyboardManager
 
   /** Minimum floating width as percentage of screen width. */
   private static final int MIN_WIDTH_PCT = 40;
-  /** Maximum floating width as percentage of screen width. */
-  private static final int MAX_WIDTH_PCT = 100;
+  /** Maximum floating width as percentage of screen width (not 100 to avoid edge system gestures). */
+  private static final int MAX_WIDTH_PCT = 90;
   /** Minimum floating height as percentage of screen height. */
   private static final int MIN_HEIGHT_PCT = 10;
   /** Maximum floating height as percentage of screen height. */
   private static final int MAX_HEIGHT_PCT = 80;
+
+  /** Minimum top margin is defined in FloatingPositionHelper.MIN_TOP_PCT. */
 
   // Resize state
   private boolean _isResizing;
@@ -67,13 +72,9 @@ public final class FloatingKeyboardManager
   {
     _ime = ime;
     _config = config;
-    DisplayMetrics dm = ime.getResources().getDisplayMetrics();
-    _screenWidth = dm.widthPixels;
-    _screenHeight = dm.heightPixels;
+    updateScreenSize();
     _posX = _config.floating_pos_x;
     _posY = _config.floating_pos_y;
-    // Estimate keyboard height as ~40% of screen height
-    _estimatedHeight = _screenHeight * 40 / 100;
   }
 
   public void attach(View container, View handle)
@@ -82,7 +83,7 @@ public final class FloatingKeyboardManager
     _handle = handle;
     if (_handle != null)
     {
-      // The handle is a LinearLayout containing a close button and a drag area.
+      // The handle is a LinearLayout containing a drag area and a close button.
       // Find the drag area inside it.
       View dragArea = _handle;
       if (handle instanceof ViewGroup)
@@ -128,33 +129,56 @@ public final class FloatingKeyboardManager
     }
   }
 
+  /** Update screen dimensions and reload fold-state-specific size/position.
+   * Called on config changes (e.g. fold/unfold). */
+  public void updateScreenSize()
+  {
+    DisplayMetrics dm = _ime.getResources().getDisplayMetrics();
+    _screenWidth = dm.widthPixels;
+    _screenHeight = dm.heightPixels;
+    // Estimate status bar height to avoid the notification shade area
+    int rawStatusBarHeight;
+    int resourceId = _ime.getResources().getIdentifier("status_bar_height", "dimen", "android");
+    if (resourceId > 0)
+      rawStatusBarHeight = _ime.getResources().getDimensionPixelSize(resourceId);
+    else
+      rawStatusBarHeight = (int)(_screenHeight * 0.03);
+    _statusBarHeight = FloatingPositionHelper.computeMinTopOffset(_screenHeight, rawStatusBarHeight);
+    _estimatedHeight = _screenHeight * 40 / 100;
+    // Reload position and width from config so fold-state-specific values are
+    // used (folded and unfolded states have separate saved values).
+    _posX = _config.floating_pos_x;
+    _posY = _config.floating_pos_y;
+    _floatWidth = computeFloatWidth();
+  }
+
   /** Compute floating width in pixels from config percentage. */
   private int computeFloatWidth()
   {
-    int pct = Math.max(40, Math.min(100, _config.floating_keyboard_width));
+    int pct = Math.max(MIN_WIDTH_PCT, Math.min(MAX_WIDTH_PCT, _config.floating_keyboard_width));
     return _screenWidth * pct / 100;
   }
 
   /** Default Y position if none saved. */
   private float defaultPosY(int kbHeight)
   {
-    return Math.max(0, _screenHeight - kbHeight - (int)(_screenHeight * 0.05f));
+    return FloatingPositionHelper.defaultPosY(kbHeight, _screenHeight, _statusBarHeight);
   }
 
   /** Default X position (centered). */
   private float defaultPosX(int kbWidth)
   {
-    return Math.max(0, (_screenWidth - kbWidth) / 2f);
+    return FloatingPositionHelper.defaultPosX(kbWidth, _screenWidth);
   }
 
   private float clampX(float x, int kbWidth)
   {
-    return Math.max(0, Math.min(x, _screenWidth - kbWidth));
+    return FloatingPositionHelper.clampX(x, kbWidth, _screenWidth);
   }
 
   private float clampY(float y, int kbHeight)
   {
-    return Math.max(0, Math.min(y, _screenHeight - kbHeight));
+    return FloatingPositionHelper.clampY(y, kbHeight, _screenHeight, _statusBarHeight);
   }
 
   /**
@@ -168,7 +192,7 @@ public final class FloatingKeyboardManager
     // Ensure handle is attached (attach may not have been called yet)
     if (_handle == null && container instanceof ViewGroup)
     {
-      View h = ((ViewGroup)container).findViewById(R.id.floating_drag_handle);
+      View h = ((ViewGroup)container).findViewById(R.id.floating_bottom_handle);
       if (h != null)
         attach(container, h);
     }

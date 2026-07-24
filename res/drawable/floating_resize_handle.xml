@@ -6,6 +6,6 @@
     android:viewportHeight="20">
   <!-- Diagonal grabber dots pattern for resize handle -->
   <path
-      android:fillColor="#A0FFFFFF"
+      android:fillColor="#80808080"
       android:pathData="M18,4L18,2L16,2L16,4L18,4ZM14,8L14,6L12,6L12,8L14,8ZM10,12L10,10L8,10L8,12L10,12ZM6,16L6,14L4,14L4,16L6,16Z"/>
 </vector>
