@@ -1,29 +1,52 @@
 package juloo.keyboard2.suggestions;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import juloo.cdict.Cdict;
 import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.Config;
 import juloo.keyboard2.ComposeKey;
 import juloo.keyboard2.ComposeKeyData;
+import juloo.keyboard2.pinyin.PinyinInput;
+import juloo.keyboard2.pinyin.PinyinDict;
 
 /** Keep track of the word being typed and provide suggestions for
-    [CandidatesView]. */
+    [CandidatesView].
+
+    English mode keeps the legacy fixed-size [suggestions]/[count] arrays
+    (capped at [MAX_COUNT]).
+
+    Pinyin (Chinese) mode uses the dynamic [pinyin_candidates] list which can
+    hold many more candidates so the user can scroll through all the
+    characters/words matching a syllable. The decoded pinyin preview is
+    exposed separately via [pinyin_preview] so it no longer occupies a
+    precious candidate slot. */
 public final class Suggestions
 {
   Callback _callback;
   Config _config;
   boolean _enabled;
 
-  /** Current suggestions. The best suggestion is at index [0]. */
+  /** Current suggestions (English mode). The best suggestion is at index 0. */
   public String[] suggestions = new String[MAX_COUNT];
   /** Number of suggestions at the beginning of the [suggestions] array that
       are not [null]. */
   public int count = 0;
   public String emoji_suggestion = null;
-  /** Number of suggestions in [suggestions]. */
+  /** Number of suggestions in [suggestions] (English mode). */
   public static final int MAX_COUNT = 3;
+
+  /** Maximum number of pinyin candidates to query and display. A single
+      syllable can map to dozens of characters, so this is much larger than
+      [MAX_COUNT]. The candidates bar scrolls horizontally to reveal them. */
+  public static final int PINYIN_MAX_COUNT = 40;
+
+  /** Pinyin mode candidates (Chinese). May contain many entries. */
+  public List<String> pinyin_candidates = new ArrayList<String>();
+  /** Decoded pinyin preview (e.g. "ni hao") shown separately from the
+      candidate list in pinyin mode. Selecting it commits the raw pinyin. */
+  public String pinyin_preview = null;
 
   public Suggestions(Callback c, Config conf)
   {
@@ -48,12 +71,85 @@ public final class Suggestions
     _callback.set_suggestions(this);
   }
 
-  void clear()
+  /** Called by [PinyinInput] when the pinyin buffer changes. Populates
+      [pinyin_candidates] with as many dictionary matches as available (up to
+      [PINYIN_MAX_COUNT]) and exposes the decoded pinyin via
+      [pinyin_preview].
+
+      Unlike the previous implementation, the preview no longer occupies the
+      first candidate slot — it is rendered as a separate label. This frees
+      all candidate slots for actual words/characters, which is essential
+      because a single pinyin syllable can map to dozens of characters. */
+  public void pinyin_query(PinyinInput pinyin)
+  {
+    // In pinyin mode, candidates must ALWAYS be shown regardless of the
+    // _enabled flag (which follows the editor's suggestion flag). The user
+    // needs to see pinyin candidates to type Chinese.
+    List<String> syllables = pinyin.get_syllables();
+    if (syllables.isEmpty())
+    {
+      clear();
+      return;
+    }
+    pinyin_preview = pinyin.get_pinyin_string();
+    // Build concatenated pinyin for dictionary lookup
+    StringBuilder query = new StringBuilder();
+    for (String s : syllables)
+      query.append(s);
+    String word = query.toString();
+
+    List<String> candidates = new ArrayList<String>();
+    Cdict dict = pinyin.get_dict();
+    if (dict != null)
+    {
+      Cdict.Result r = dict.find(word);
+      if (r.found)
+        candidates.add(dict.word(r.index));
+      int[] suffixes = dict.suffixes(r, PINYIN_MAX_COUNT);
+      for (int j = 0; j < suffixes.length
+          && candidates.size() < PINYIN_MAX_COUNT; j++)
+        candidates.add(dict.word(suffixes[j]));
+      if (candidates.size() < PINYIN_MAX_COUNT && word.length() >= 3)
+      {
+        int[] dist = dict.distance(word, 1,
+            PINYIN_MAX_COUNT - candidates.size());
+        for (int j = 0; j < dist.length
+            && candidates.size() < PINYIN_MAX_COUNT; j++)
+          candidates.add(dict.word(dist[j]));
+      }
+    }
+    // Fall back to built-in PinyinDict
+    if (candidates.isEmpty())
+    {
+      PinyinDict builtin = PinyinDict.built_in();
+      List<PinyinDict.Entry> results = builtin.query(word, PINYIN_MAX_COUNT);
+      for (PinyinDict.Entry e : results)
+      {
+        if (candidates.size() >= PINYIN_MAX_COUNT)
+          break;
+        candidates.add(e.word);
+      }
+    }
+
+    pinyin_candidates.clear();
+    pinyin_candidates.addAll(candidates);
+    // Keep the legacy array empty in pinyin mode; the CandidatesView reads
+    // [pinyin_candidates] / [pinyin_preview] instead.
+    count = 0;
+    for (int i = 0; i < MAX_COUNT; i++)
+      suggestions[i] = null;
+    emoji_suggestion = null;
+    _callback.set_suggestions(this);
+  }
+
+  public void clear()
   {
     count = 0;
     for (int i = 0; i < MAX_COUNT; i++)
       suggestions[i] = null;
     emoji_suggestion = null;
+    pinyin_candidates.clear();
+    pinyin_preview = null;
   }
 
   int query_suggestions(String word)

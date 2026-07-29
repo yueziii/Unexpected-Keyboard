@@ -6,6 +6,11 @@
       <TextView android:id="@+id/candidates_left" style="@style/candidates_item"/>
       <TextView android:id="@+id/candidates_middle" style="@style/candidates_item"/>
       <TextView android:id="@+id/candidates_right" style="@style/candidates_item"/>
+      <!-- Pinyin mode: preview label + horizontally scrollable candidate strip. -->
+      <TextView android:id="@+id/candidates_pinyin_preview" style="@style/candidates_pinyin_preview" android:visibility="gone"/>
+      <HorizontalScrollView android:id="@+id/candidates_pinyin_scroll" style="@style/candidates_pinyin_scroll" android:visibility="gone" android:fillViewport="true">
+        <LinearLayout android:id="@+id/candidates_pinyin_container" android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="match_parent"/>
+      </HorizontalScrollView>
     </juloo.keyboard2.suggestions.CandidatesView>
     <juloo.keyboard2.Keyboard2View android:id="@+id/keyboard_view" android:layout_width="match_parent" android:layout_height="wrap_content"/>
   </LinearLayout>
