@@ -165,13 +165,15 @@
     <string name="pref_physical_keyboard_behavior">When a physical keyboard is connected</string>
     <string name="pref_physical_keyboard_behavior_hide">Hide everything</string>
     <string name="pref_physical_keyboard_behavior_show">Show everything</string>
+    <string name="pref_keyevent_compat_title">Key event compatibility mode</string>
+    <string name="pref_keyevent_compat_summary">Send key events without soft-keyboard flags and with a physical device id. Enable if shortcuts (Ctrl+C, Win, etc.) do not work in remote desktop apps (UU Remote, ToDesk, Sunlogin).</string>
     <string name="pref_split_layout">Split layout</string>
     <string name="pref_split_layout_never">Never</string>
     <string name="pref_split_layout_landscape">In landscape orientation</string>
     <string name="pref_split_layout_wide">On wide screens</string>
   <string name="pref_category_floating">Floating keyboard</string>
   <string name="pref_floating_keyboard_title">Floating keyboard</string>
-  <string name="pref_floating_keyboard_summary">Display the keyboard as a movable floating window</string>
+  <string name="pref_floating_keyboard_summary">Enable the floating keyboard feature. Use the fn key to toggle between floating and docked mode.</string>
   <string name="pref_floating_keyboard_width">Floating keyboard width</string>
   <string name="pref_floating_drag_handle">Drag to move the keyboard</string>
   <string name="pref_floating_reset_position">Reset position</string>

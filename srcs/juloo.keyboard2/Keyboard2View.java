@@ -274,7 +274,7 @@ public class Keyboard2View extends View
       width = specSize;
     // In floating mode, ignore system insets (cutout/navigation bars) so the
     // keyboard content is symmetric and centered within the floating window.
-    if (_config.floating_keyboard)
+    if (_config.floating_keyboard_active)
     {
       _marginLeft = _config.horizontal_margin;
       _marginRight = _config.horizontal_margin;
