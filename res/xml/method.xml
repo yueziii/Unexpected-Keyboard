@@ -84,4 +84,5 @@
   <subtype android:label="%s" android:languageTag="uz" android:imeSubtypeLocale="uz_UZ" android:imeSubtypeMode="keyboard" android:isAsciiCapable="true" android:imeSubtypeExtraValue="script=latin,default_layout=latn_qwerty_uz,extra_keys=ʻ|ʼ" />
   <subtype android:label="%s" android:languageTag="vi" android:imeSubtypeLocale="vi_VN" android:imeSubtypeMode="keyboard" android:isAsciiCapable="true" android:imeSubtypeExtraValue="script=latin,default_layout=latn_qwerty_vi" />
   <subtype android:label="%s" android:languageTag="yo" android:imeSubtypeLocale="yo_NG" android:imeSubtypeMode="keyboard" android:isAsciiCapable="true" android:imeSubtypeExtraValue="script=latin,default_layout=latn_qwerty_us,extra_keys=₦|ẹ|ọ|ṣ" />
+  <subtype android:label="%s" android:languageTag="zh" android:imeSubtypeLocale="zh_CN" android:imeSubtypeMode="keyboard" android:isAsciiCapable="true" android:imeSubtypeExtraValue="script=latin,default_layout=latn_qwerty_us,dictionary=zh_CN_pinyin,pinyin=1" />
 </input-method>

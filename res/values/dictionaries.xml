@@ -57,6 +57,7 @@
   <string name="dict_name_uk">Ukrainian</string>
   <string name="dict_name_ur">Urdu</string>
   <string name="dict_name_zgh">Standard Moroccan Tamazight</string>
+  <string name="dict_name_zh_CN_pinyin">Chinese (Pinyin)</string>
   <string-array name="dictionaries_locale">
     <item>ar</item>
     <item>as</item>
@@ -115,6 +116,7 @@
     <item>uk</item>
     <item>ur</item>
     <item>zgh</item>
+    <item>zh_CN_pinyin</item>
   </string-array>
   <string-array name="dictionaries_name">
     <item>@string/dict_name_ar</item>
@@ -174,6 +176,7 @@
     <item>@string/dict_name_uk</item>
     <item>@string/dict_name_ur</item>
     <item>@string/dict_name_zgh</item>
+    <item>@string/dict_name_zh_CN_pinyin</item>
   </string-array>
   <integer-array name="dictionaries_size">
     <item>1077292</item>
@@ -233,5 +236,6 @@
     <item>7456277</item>
     <item>573464</item>
     <item>628174</item>
+    <item>2000000</item>
   </integer-array>
 </resources>

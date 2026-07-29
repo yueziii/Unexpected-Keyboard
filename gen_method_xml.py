@@ -93,7 +93,8 @@ LOCALES = [
   loc("ur", "persian", "arab_pc_ir"),
   loc("uz_UZ", "latin", "latn_qwerty_uz", extra_keys="ʻ|ʼ"),
   loc("vi_VN", "latin", "latn_qwerty_vi"),
-  loc("yo_NG", "latin", "latn_qwerty_us", extra_keys="₦|ẹ|ọ|ṣ")
+  loc("yo_NG", "latin", "latn_qwerty_us", extra_keys="₦|ẹ|ọ|ṣ"),
+  loc("zh_CN", "latin", "latn_qwerty_us", dictionary="zh_CN_pinyin", pinyin="1")
 ]
 
 # The locale that is at the beginning of the list.
@@ -118,7 +119,8 @@ def subtype_elem(root, loc):
     tag = loc["tag"].replace("_", "-")
     extra_keys = ",extra_keys=" + loc["extra_keys"] if "extra_keys" in loc else ""
     dictionaries = ",dictionary=" + loc["dictionary"] if loc["dictionary"] != None else ""
-    extra_value = f'script={loc["script"]},default_layout={loc["default_layout"]}{dictionaries}{extra_keys}'
+    pinyin = ",pinyin=" + loc["pinyin"] if "pinyin" in loc else ""
+    extra_value = f'script={loc["script"]},default_layout={loc["default_layout"]}{dictionaries}{extra_keys}{pinyin}'
     ET.SubElement(root, "subtype", attrib={
         "android:label": "%s",
         "android:languageTag": tag,

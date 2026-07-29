@@ -37,6 +37,7 @@ public final class DeviceLocales
     public final String default_layout; // Might be [null]
     public final ExtraKeys extra_keys;
     public final String dictionary; // Might be [null]
+    public final boolean pinyin;
 
     public Loc(InputMethodSubtype st)
     {
@@ -47,6 +48,7 @@ public final class DeviceLocales
       extra_keys = (extra_keys_s != null) ?
         ExtraKeys.parse(script, extra_keys_s) : ExtraKeys.EMPTY;
       dictionary = st.getExtraValueOf("dictionary");
+      pinyin = "1".equals(st.getExtraValueOf("pinyin"));
     }
   }
 
