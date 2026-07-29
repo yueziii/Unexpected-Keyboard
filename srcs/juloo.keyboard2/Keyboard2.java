@@ -29,6 +29,7 @@ import juloo.keyboard2.dict.DictionariesActivity;
 import juloo.keyboard2.prefs.LayoutsPreference;
 import juloo.keyboard2.suggestions.CandidatesView;
 import juloo.keyboard2.suggestions.Suggestions;
+import juloo.keyboard2.pinyin.PinyinDict;
 
 public class Keyboard2 extends InputMethodService
   implements SharedPreferences.OnSharedPreferenceChangeListener
@@ -129,6 +130,9 @@ public class Keyboard2 extends InputMethodService
     _handler = new Handler(getMainLooper());
     _foldStateTracker = new FoldStateTracker(this);
     _dictionaries = Dictionaries.instance(this);
+    // Pre-load the built-in pinyin dictionary from assets so that
+    // PinyinDict.built_in() returns the full 78k-entry dictionary.
+    PinyinDict.init(this);
     Config.initGlobalConfig(prefs, getResources(),
         _foldStateTracker.isUnfolded(), _dictionaries);
     _config = Config.globalConfig();
@@ -140,6 +144,7 @@ public class Keyboard2 extends InputMethodService
     prefs.registerOnSharedPreferenceChangeListener(this);
     Logs.set_debug_logs(getResources().getBoolean(R.bool.debug_logs));
     refreshSubtypeImm();
+    refresh_lang_extra_key();
     create_keyboard_view();
     ClipboardHistoryService.on_startup(this, _keyeventhandler);
     _floating_manager = new FloatingKeyboardManager(this, _config);
@@ -187,12 +192,39 @@ public class Keyboard2 extends InputMethodService
     _localeTextLayout = default_layout;
   }
 
+  /** Merge [switch_lang] into the subtype extra keys so that the language
+      switch key appears on the shift key when pinyin mode is active. */
+  private void refresh_lang_extra_key()
+  {
+    java.util.List<ExtraKeys> ks = new java.util.ArrayList<ExtraKeys>();
+    if (_config.extra_keys_subtype != null)
+      ks.add(_config.extra_keys_subtype);
+    // Always offer the switch_lang key — it toggles pinyin on/off
+    ks.add(ExtraKeys.parse("latin", "switch_lang@shift"));
+    // Offer the toggle_suggestions key on the backspace key so the candidate
+    // bar can be hidden/shown quickly to save space.
+    ks.add(ExtraKeys.parse("latin", "toggle_suggestions@backspace"));
+    _config.extra_keys_subtype = ExtraKeys.merge(ks);
+  }
+
   private void refresh_current_dictionary()
   {
+    // Remember the user's manual pinyin toggle before reloading. A genuine
+    // subtype change (onCurrentInputMethodSubtypeChanged) clears the
+    // override so pinyin_enabled follows the new subtype's marker; a plain
+    // refresh_config() call (e.g. from SWITCH_LANG) must preserve it.
+    boolean user_override = _config.pinyin_user_override;
+    boolean user_pinyin = _config.pinyin_enabled;
     _config.current_dictionary = null;
     _config.emoji_dictionary = null;
+    _config.pinyin_dictionary = null;
+    _config.pinyin_enabled = false;
     if (_config.device_locales.default_ == null)
       return;
+    // Enable pinyin mode if the subtype has the pinyin marker, unless the
+    // user has manually toggled — then their choice wins.
+    boolean subtype_pinyin = _config.device_locales.default_.pinyin;
+    _config.pinyin_enabled = user_override ? user_pinyin : subtype_pinyin;
     String current = _config.device_locales.default_.dictionary;
     if (current == null)
       return;
@@ -201,14 +233,21 @@ public class Keyboard2 extends InputMethodService
       return;
     _config.current_dictionary = Dictionaries.find_by_name(dicts, "main");
     _config.emoji_dictionary = Dictionaries.find_by_name(dicts, "emoji");
+    // In pinyin mode, the main dictionary is also the pinyin dictionary
+    if (_config.pinyin_enabled)
+      _config.pinyin_dictionary = _config.current_dictionary;
   }
 
   private void refresh_candidates_view()
   {
+    // In pinyin mode, candidates must always be shown regardless of the
+    // suggestions_enabled setting or the editor's suggestion flag.
+    // English mode follows the system/user setting.
     boolean should_show =
-      _config.suggestions_enabled
-      && _config.editor_config.should_show_candidates_view
-      && !_config.split_layout;
+      (_config.suggestions_enabled
+       && _config.editor_config.should_show_candidates_view
+       && !_config.split_layout)
+      || _config.pinyin_enabled;
     if (should_show)
       _candidates_view.refresh_config(_config);
     _candidates_view.setVisibility(should_show ? View.VISIBLE : View.GONE);
@@ -221,6 +260,8 @@ public class Keyboard2 extends InputMethodService
     int prev_theme = _config.theme;
     _config.refresh(getResources(), _foldStateTracker.isUnfolded(), _dictionaries);
     refresh_current_dictionary();
+    // Update key event compat mode so it takes effect immediately
+    _keyeventhandler._keyevent_compat = _config.keyevent_compat;
     // Refreshing the theme config requires re-creating the views
     if (prev_theme != _config.theme)
     {
@@ -236,11 +277,11 @@ public class Keyboard2 extends InputMethodService
     // Show/hide drag handle and resize handle for floating mode
     View handle = _keyboard_container_view.findViewById(R.id.floating_bottom_handle);
     if (handle != null)
-      handle.setVisibility(_config.floating_keyboard ? View.VISIBLE : View.GONE);
+      handle.setVisibility(_config.floating_keyboard_active ? View.VISIBLE : View.GONE);
     // Resize handle is now inside the bottom handle bar, shown/hidden with it
     // Update floating manager screen size on config changes (e.g. fold/unfold)
     // and re-apply position to clamp within new screen bounds
-    if (_floating_manager != null && _config.floating_keyboard)
+    if (_floating_manager != null && _config.floating_keyboard_active)
     {
       _floating_manager.updateScreenSize();
       _floating_manager.applyPosition(_keyboard_container_view);
@@ -297,7 +338,7 @@ public class Keyboard2 extends InputMethodService
     // In floating mode, translate the keyboard container to its position.
     if (_floating_manager != null)
     {
-      if (_config.floating_keyboard)
+      if (_config.floating_keyboard_active)
         _floating_manager.applyPosition(v);
       else
         _floating_manager.disableFloating(v);
@@ -324,7 +365,7 @@ public class Keyboard2 extends InputMethodService
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
     }
-    boolean floating = _config != null && _config.floating_keyboard;
+    boolean floating = _config != null && _config.floating_keyboard_active;
     updateLayoutHeightOf(window, ViewGroup.LayoutParams.MATCH_PARENT);
     final View inputArea = window.findViewById(android.R.id.inputArea);
 
@@ -416,6 +457,10 @@ public class Keyboard2 extends InputMethodService
   public void onCurrentInputMethodSubtypeChanged(InputMethodSubtype subtype)
   {
     refreshSubtypeImm();
+    // A real subtype change clears the user's manual pinyin override so
+    // pinyin_enabled follows the new subtype's pinyin marker again.
+    _config.pinyin_user_override = false;
+    refresh_lang_extra_key();
     refresh_current_dictionary();
     refresh_candidates_view();
     _keyboard_layout_view.setKeyboard(current_layout());
@@ -443,7 +488,14 @@ public class Keyboard2 extends InputMethodService
   {
     refresh_config();
     _keyboard_layout_view.setKeyboard(current_layout());
-    if ("floating_keyboard".equals(_key) || "floating_keyboard_width".equals(_key)
+    if ("floating_keyboard".equals(_key))
+    {
+      // When the floating feature is turned off, also dock the keyboard
+      if (!_config.floating_keyboard)
+        _config.floating_keyboard_active = false;
+      setInputView(_keyboard_container_view);
+    }
+    else if ("floating_keyboard_width".equals(_key)
         || "floating_keyboard_height".equals(_key))
       setInputView(_keyboard_container_view);
   }
@@ -452,7 +504,7 @@ public class Keyboard2 extends InputMethodService
   public void onComputeInsets(InputMethodService.Insets outInsets)
   {
     super.onComputeInsets(outInsets);
-    if (_floating_manager != null && _config.floating_keyboard)
+    if (_floating_manager != null && _config.floating_keyboard_active)
     {
       _floating_manager.computeFloatingInsets(outInsets, _keyboard_container_view);
     }
@@ -550,6 +602,19 @@ public class Keyboard2 extends InputMethodService
             switchToNextInputMethod(false);
           break;
 
+        case SWITCH_LANG:
+          // Toggle pinyin mode on/off. The user's choice takes precedence
+          // over the subtype's pinyin marker so the toggle actually sticks.
+          _config.pinyin_enabled = !_config.pinyin_enabled;
+          _config.pinyin_user_override = true;
+          // Flush any pending pinyin state via the handler
+          _keyeventhandler.lang_switched(_config);
+          // Refresh the keyboard to update extra keys
+          refresh_lang_extra_key();
+          refresh_config();
+          setInputView(_keyboard_container_view);
+          break;
+
         case ACTION:
           InputConnection conn = getCurrentInputConnection();
           if (conn != null)
@@ -587,9 +652,28 @@ public class Keyboard2 extends InputMethodService
           break;
         case TOGGLE_FLOATING:
         {
+          // Only toggle floating if the feature is enabled in settings.
+          // The fn key toggles between floating/docked; it does not enable
+          // the feature itself.
+          if (_config.floating_keyboard)
+          {
+            _config.floating_keyboard_active = !_config.floating_keyboard_active;
+            refresh_config();
+            setInputView(_keyboard_container_view);
+          }
+          break;
+        }
+        case TOGGLE_SUGGESTIONS:
+        {
+          // In pinyin (Chinese) mode, candidates must always be shown.
+          // Ignore the toggle in that case.
+          if (_config.pinyin_enabled)
+            break;
+          // Toggle the candidate/dictionary bar. Useful in EN mode to hide
+          // the bar and save screen space.
           SharedPreferences p = Config.globalPrefs();
-          boolean current = p.getBoolean("floating_keyboard", false);
-          p.edit().putBoolean("floating_keyboard", !current).commit();
+          boolean current = p.getBoolean("suggestions", true);
+          p.edit().putBoolean("suggestions", !current).commit();
           break;
         }
       }
@@ -629,10 +713,21 @@ public class Keyboard2 extends InputMethodService
     {
       switch (q)
       {
-        case Complete_first: return _suggestions.suggestions[0];
-        case Complete_second: return _suggestions.suggestions[1];
-        case Complete_third: return _suggestions.suggestions[2];
+        case Complete_first:
+          return !_suggestions.pinyin_candidates.isEmpty()
+            ? _suggestions.pinyin_candidates.get(0)
+            : _suggestions.suggestions[0];
+        case Complete_second:
+          return _suggestions.pinyin_candidates.size() > 1
+            ? _suggestions.pinyin_candidates.get(1)
+            : _suggestions.suggestions[1];
+        case Complete_third:
+          return _suggestions.pinyin_candidates.size() > 2
+            ? _suggestions.pinyin_candidates.get(2)
+            : _suggestions.suggestions[2];
         case Complete_emoji: return _suggestions.emoji_suggestion;
+        case Switch_lang:
+          return _config.pinyin_enabled ? "中" : "EN";
       }
       return "";
     }

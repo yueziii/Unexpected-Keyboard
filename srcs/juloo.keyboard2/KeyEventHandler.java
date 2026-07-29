@@ -10,6 +10,8 @@ import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import java.util.Iterator;
 import juloo.keyboard2.suggestions.Suggestions;
+import juloo.keyboard2.pinyin.PinyinInput;
+import juloo.keyboard2.pinyin.PinyinSchemes;
 
 public final class KeyEventHandler
   implements Config.IKeyEventHandler,
@@ -20,6 +22,8 @@ public final class KeyEventHandler
   Autocapitalisation _autocap;
   Suggestions _suggestions;
   CurrentlyTypedWord _typedword;
+  /** Pinyin input state machine. Non-null when pinyin mode is active. */
+  PinyinInput _pinyin = null;
   /** State of the system modifiers. It is updated whether a modifier is down
       or up and a corresponding key event is sent. */
   Pointers.Modifiers _mods;
@@ -32,6 +36,12 @@ public final class KeyEventHandler
   boolean _move_cursor_force_fallback = false;
   /** Whether the space bar automatically enters the best suggestion. */
   boolean _space_bar_auto_complete = false;
+  /** Compatibility mode for apps that do not forward soft keyboard key
+ events (e.g. remote desktop apps). When true, key events are sent without
+ FLAG_SOFT_KEYBOARD / FLAG_KEEP_TOUCH_MODE and with a non-virtual device
+ id (0) so they are more likely to be forwarded as if from a physical
+ keyboard. */
+  boolean _keyevent_compat = false;
   /** Remember the action that was handled. This is used by autocorrect. */
   LastAction _last_action = null;
   LastAction _next_last_action = null;
@@ -57,7 +67,38 @@ public final class KeyEventHandler
     _move_cursor_force_fallback =
       conf.editor_config.should_move_cursor_force_fallback;
     _space_bar_auto_complete = conf.space_bar_auto_complete;
+    _keyevent_compat = conf.keyevent_compat;
     _last_action = null;
+    // Initialize pinyin mode if enabled in the config
+    if (conf.pinyin_enabled)
+    {
+      if (_pinyin == null)
+        _pinyin = new PinyinInput();
+      _pinyin.started(PinyinSchemes.get(conf.pinyin_scheme),
+          conf.pinyin_dictionary, _suggestions);
+    }
+    else
+      _pinyin = null;
+  }
+
+  /** Called when the language mode is switched (pinyin on/off toggle).
+      Flushes any pending pinyin state. */
+  public void lang_switched(Config conf)
+  {
+    if (_pinyin != null)
+    {
+      flush_pinyin();
+      // If pinyin was just disabled, clear the reference
+      if (!conf.pinyin_enabled)
+        _pinyin = null;
+    }
+    else if (conf.pinyin_enabled)
+    {
+      // Pinyin was just enabled — initialize it
+      _pinyin = new PinyinInput();
+      _pinyin.started(PinyinSchemes.get(conf.pinyin_scheme),
+          conf.pinyin_dictionary, _suggestions);
+    }
   }
 
   /** Selection has been updated. */
@@ -110,12 +151,71 @@ public final class KeyEventHandler
     update_meta_state(mods);
     switch (key.getKind())
     {
-      case Char: send_text(String.valueOf(key.getChar())); break;
-      case String: send_text(key.getString()); break;
-      case Event: _recv.handle_event_key(key.getEvent()); break;
-      case Keyevent: send_key_down_up(key.getKeyevent()); break;
+      case Char:
+        // In pinyin mode, intercept letter keys to build the pinyin buffer.
+        // The ';' key is the "ing" final in Microsoft double pinyin, so it is
+        // intercepted as a pinyin keystroke when there is a pending initial.
+        // Other non-letter chars flush the pinyin buffer first.
+        char ch = key.getChar();
+        if (_pinyin != null
+            && (Character.isLetter(ch)
+                || (ch == ';' && _pinyin.is_active() && _pinyin.pending_final())))
+        {
+          _pinyin.key_typed(ch);
+          _pinyin.query_candidates();
+          update_pinyin_composing();
+        }
+        else if (_pinyin != null && _pinyin.is_active())
+        {
+          // Non-letter while pinyin buffer is pending: flush raw pinyin,
+          // then send the character.
+          flush_pinyin();
+          send_text(String.valueOf(ch));
+        }
+        else
+          send_text(String.valueOf(ch));
+        break;
+      case String:
+      {
+        String str = key.getString();
+        // In pinyin mode, ";" is the "ing" final; intercept it when a
+        // final is pending, same as the Char branch above.
+        if (_pinyin != null && str.equals(";")
+            && _pinyin.is_active() && _pinyin.pending_final())
+        {
+          _pinyin.key_typed(';');
+          _pinyin.query_candidates();
+          update_pinyin_composing();
+        }
+        else
+        {
+          flush_pinyin();
+          send_text(str);
+        }
+        break;
+      }
+      case Event: flush_pinyin(); _recv.handle_event_key(key.getEvent()); break;
+      case Keyevent: flush_pinyin(); send_key_down_up(key.getKeyevent()); break;
       case Modifier: break;
-      case Editing: handle_editing_key(key.getEditing()); break;
+      case Editing:
+        // In pinyin mode, BACKSPACE and DELETE_WORD should edit the pinyin
+        // buffer directly rather than flushing (committing) it first.
+        // Flushing before backspace was the bug: it committed the entire
+        // pinyin string to the editor, then deleted only one character,
+        // leaving the rest "上屏" (committed on screen).
+        if (_pinyin != null && _pinyin.is_active())
+        {
+          KeyValue.Editing ed = key.getEditing();
+          if (ed == KeyValue.Editing.BACKSPACE
+              || ed == KeyValue.Editing.DELETE_WORD)
+          {
+            handle_editing_key(ed);
+            break;
+          }
+        }
+        flush_pinyin();
+        handle_editing_key(key.getEditing());
+        break;
       case Compose_pending: _recv.set_compose_pending(true); break;
       case Slider: handle_slider(key.getSlider(), key.getSliderRepeat(), false); break;
       case Macro: evaluate_macro(key.getMacro()); break;
@@ -134,6 +234,33 @@ public final class KeyEventHandler
   @Override
   public void suggestion_entered(String text)
   {
+    if (_pinyin != null && _pinyin.is_active())
+    {
+      InputConnection conn = _recv.getCurrentInputConnection();
+      // Accept the candidate: consume matching syllables, keep the rest
+      String preview = _pinyin.get_pinyin_string();
+      boolean has_remaining = _pinyin.accept_candidate(text, preview);
+      if (conn != null)
+      {
+        conn.beginBatchEdit();
+        // Committing the candidate replaces the current composing text
+        conn.commitText(text, 1);
+        if (has_remaining)
+          conn.setComposingText(_pinyin.get_pinyin_string(), 1);
+        else
+          conn.finishComposingText();
+        conn.endBatchEdit();
+      }
+      if (has_remaining)
+        _pinyin.query_candidates();
+      else
+      {
+        _suggestions.clear();
+        _recv.set_suggestions(_suggestions);
+      }
+      _next_last_action = LastAction.OTHER;
+      return;
+    }
     String old = _typedword.get();
     int cur_rel = _typedword.cursor_relative();
     replace_surrounding_text(old.length() + cur_rel, -cur_rel, text);
@@ -242,9 +369,20 @@ public final class KeyEventHandler
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn == null)
       return;
+    // In compat mode, omit FLAG_SOFT_KEYBOARD / FLAG_KEEP_TOUCH_MODE and
+    // use a non-virtual device id (0) so that apps which filter out
+    // soft-keyboard events (e.g. UU Remote, ToDesk, Sunlogin) still receive
+    // and forward key events such as Ctrl+C, Win, etc. Some remote desktop
+    // apps discard events whose device id is VIRTUAL_KEYBOARD (-1), so
+    // using 0 (the first physical keyboard) can improve compatibility.
+    int flags = _keyevent_compat
+      ? 0
+      : (KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE);
+    int deviceId = _keyevent_compat
+      ? 0
+      : KeyCharacterMap.VIRTUAL_KEYBOARD;
     conn.sendKeyEvent(new KeyEvent(1, 1, eventAction, eventCode, 0,
-          metaState, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
-          KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE));
+          metaState, deviceId, 0, flags));
     if (eventAction == KeyEvent.ACTION_UP)
     {
       _autocap.event_sent(eventCode, metaState);
@@ -301,8 +439,30 @@ public final class KeyEventHandler
       case REPLACE: send_context_menu_action(android.R.id.replaceText); break;
       case ASSIST: send_context_menu_action(android.R.id.textAssist); break;
       case AUTOFILL: send_context_menu_action(android.R.id.autofill); break;
-      case DELETE_WORD: send_key_down_up(KeyEvent.KEYCODE_DEL, KeyEvent.META_CTRL_ON | KeyEvent.META_CTRL_LEFT_ON); break;
-      case FORWARD_DELETE_WORD: send_key_down_up(KeyEvent.KEYCODE_FORWARD_DEL, KeyEvent.META_CTRL_ON | KeyEvent.META_CTRL_LEFT_ON); break;
+      case DELETE_WORD:
+        if (_pinyin != null && _pinyin.is_active())
+        {
+          // Clear the entire pinyin buffer on word-delete
+          _pinyin.reset();
+          finish_pinyin_composing();
+          _suggestions.clear();
+          _recv.set_suggestions(_suggestions);
+        }
+        else
+          send_key_down_up(KeyEvent.KEYCODE_DEL, KeyEvent.META_CTRL_ON | KeyEvent.META_CTRL_LEFT_ON);
+        break;
+      case FORWARD_DELETE_WORD:
+        if (_pinyin != null && _pinyin.is_active())
+        {
+          // Clear the entire pinyin buffer on forward word-delete
+          _pinyin.reset();
+          finish_pinyin_composing();
+          _suggestions.clear();
+          _recv.set_suggestions(_suggestions);
+        }
+        else
+          send_key_down_up(KeyEvent.KEYCODE_FORWARD_DEL, KeyEvent.META_CTRL_ON | KeyEvent.META_CTRL_LEFT_ON);
+        break;
       case SELECTION_CANCEL: cancel_selection(); break;
       case SPACE_BAR: handle_space_bar(); break;
       case BACKSPACE: handle_backspace(); break;
@@ -346,6 +506,9 @@ public final class KeyEventHandler
       case Complete_third:
       case Complete_emoji:
         suggestion_entered(st.toString());
+        break;
+      case Switch_lang:
+        _recv.handle_event_key(KeyValue.Event.SWITCH_LANG);
         break;
     }
   }
@@ -546,8 +709,62 @@ public final class KeyEventHandler
   int last_replacement_word_len = 0;
 
   /** Implement autocorrect when enabled in the settings. */
+  /** Flush pending pinyin buffer by committing the raw pinyin string to the
+      editor. Does nothing if pinyin is not active. */
+  void flush_pinyin()
+  {
+    if (_pinyin == null || !_pinyin.is_active())
+      return;
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (conn != null)
+    {
+      // The composing text already shows the pinyin preview (e.g. "ni hao").
+      // Finishing composing commits it as ordinary text — no duplicate
+      // commitText needed.
+      conn.finishComposingText();
+    }
+    _pinyin.reset();
+    _suggestions.clear();
+    _recv.set_suggestions(_suggestions);
+  }
+
+  /** Update the editor's composing text to show the current pinyin preview.
+      This makes the pinyin being typed visible (underlined) in the editor,
+      matching mainstream IME behavior. */
+  void update_pinyin_composing()
+  {
+    if (_pinyin == null || !_pinyin.is_active())
+      return;
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (conn != null)
+      conn.setComposingText(_pinyin.get_pinyin_string(), 1);
+  }
+
+  /** Clear the pinyin composing text from the editor without leaving any
+      committed text behind. Used when the buffer is emptied by backspace. */
+  void finish_pinyin_composing()
+  {
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (conn != null)
+    {
+      // Committing empty text replaces the composing preview with nothing,
+      // effectively deleting it. commitText also finishes composing.
+      conn.commitText("", 1);
+    }
+  }
+
   void handle_space_bar()
   {
+    if (_pinyin != null && _pinyin.is_active())
+    {
+      // In pinyin mode, space accepts the first pinyin candidate. If no
+      // candidate is available, commit the raw pinyin preview.
+      if (!_suggestions.pinyin_candidates.isEmpty())
+        suggestion_entered(_suggestions.pinyin_candidates.get(0));
+      else
+        flush_pinyin();
+      return;
+    }
     if (_space_bar_auto_complete && _suggestions.count > 0
         && !_typedword.is_selection_not_empty()
         && _typedword.cursor_relative() == 0)
@@ -559,6 +776,26 @@ public final class KeyEventHandler
   /** Undo the last autocorrect. */
   void handle_backspace()
   {
+    if (_pinyin != null && _pinyin.is_active())
+    {
+      // Backspace in pinyin mode: remove last keystroke from buffer.
+      // Only the composing text is updated — nothing is committed to the
+      // editor, matching mainstream IME behavior.
+      _pinyin.backspace();
+      if (_pinyin.is_active())
+      {
+        _pinyin.query_candidates();
+        update_pinyin_composing();
+      }
+      else
+      {
+        // Buffer emptied: finish composing (clear the preview in editor)
+        finish_pinyin_composing();
+        _suggestions.clear();
+        _recv.set_suggestions(_suggestions);
+      }
+      return;
+    }
     if (_last_action == LastAction.SUGGESTION_ENTERED
         && last_replaced_word != null)
     {

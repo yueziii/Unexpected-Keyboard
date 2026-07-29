@@ -26,6 +26,8 @@ public final class KeyValue implements Comparable<KeyValue>
     SWITCH_VOICE_TYPING_CHOOSER,
     HIDE_SELF,
     TOGGLE_FLOATING,
+    SWITCH_LANG,
+    TOGGLE_SUGGESTIONS,
   }
 
   // Must be evaluated in the reverse order of their values.
@@ -546,6 +548,7 @@ public final class KeyValue implements Comparable<KeyValue>
   public static final KeyValue VOICE_TYPING_CHOOSER = eventKey(0xE015, Event.SWITCH_VOICE_TYPING_CHOOSER, FLAG_SMALLER_FONT);
   public static final KeyValue COMPOSE_CANCEL = placeholderKey(0xE01A, Placeholder.COMPOSE_CANCEL, FLAG_SECONDARY);
   public static final KeyValue TOGGLE_FLOATING = eventKey(0xE300, Event.TOGGLE_FLOATING, FLAG_SMALLER_FONT);
+  public static final KeyValue TOGGLE_SUGGESTIONS = eventKey("字", Event.TOGGLE_SUGGESTIONS, FLAG_SMALLER_FONT);
 
   public static KeyValue getSpecialKeyByName(String name)
   {
@@ -651,6 +654,7 @@ public final class KeyValue implements Comparable<KeyValue>
       case "switch_forward": return eventKey(0xE013, Event.SWITCH_FORWARD, FLAG_SMALLER_FONT);
       case "switch_backward": return eventKey(0xE014, Event.SWITCH_BACKWARD, FLAG_SMALLER_FONT);
       case "switch_greekmath": return eventKey("πλ∇¬", Event.SWITCH_GREEKMATH, FLAG_SMALLER_FONT);
+      case "switch_lang": return statefulKey(Stateful.Switch_lang);
       case "change_method": return CHANGE_METHOD;
       case "change_method_prev": return CHANGE_METHOD_PREV;
       case "change_method_next": return CHANGE_METHOD_NEXT;
@@ -659,6 +663,7 @@ public final class KeyValue implements Comparable<KeyValue>
       case "voice_typing": return eventKey(0xE015, Event.SWITCH_VOICE_TYPING, FLAG_SMALLER_FONT);
       case "voice_typing_chooser": return VOICE_TYPING_CHOOSER;
       case "toggle_floating": return TOGGLE_FLOATING;
+      case "toggle_suggestions": return TOGGLE_SUGGESTIONS;
       case "complete_first": return statefulKey(Stateful.Complete_first);
       case "complete_second": return statefulKey(Stateful.Complete_second);
       case "complete_third": return statefulKey(Stateful.Complete_third);
@@ -941,7 +946,8 @@ public final class KeyValue implements Comparable<KeyValue>
     Complete_first,
     Complete_second,
     Complete_third,
-    Complete_emoji;
+    Complete_emoji,
+    Switch_lang;
 
     @Override
     public String toString()

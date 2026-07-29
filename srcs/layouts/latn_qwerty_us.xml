@@ -62,7 +62,7 @@ Useful links.
     <key c="l" ne="|" sw="\\"/>
   </row>
   <row>
-    <key width="1.5" role="action" c="shift" ne="loc capslock"/>
+    <key width="1.5" role="action" c="shift" nw="loc switch_lang" ne="loc capslock"/>
     <key c="z"/>
     <key c="x" ne="loc †"/>
     <key c="c" ne="&lt;" sw="."/>

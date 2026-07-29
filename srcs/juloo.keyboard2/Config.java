@@ -55,6 +55,7 @@ public final class Config
   public float margin_bottom;
   public int keyboard_rows_height_pixels;
   public int screenHeightPixels;
+  public int screenWidthPixels;
   public float horizontal_margin;
   public float key_vertical_margin;
   public float key_horizontal_margin;
@@ -76,6 +77,12 @@ public final class Config
   public int clipboard_history_duration;
   public boolean space_bar_auto_complete;
   public boolean physical_keyboard_hide;
+  /** Compatibility mode for apps that do not forward key events from soft
+ keyboards (e.g. UU Remote, ToDesk, Sunlogin). When enabled, key events are
+ sent without FLAG_SOFT_KEYBOARD and with a non-virtual device id (0) so
+ they are more likely to be treated as physical keyboard events.
+ Defaults to off because it changes behavior system-wide. */
+  public boolean keyevent_compat = false;
 
   // Dynamically set
   /** Configuration options implied by the connected editor. */
@@ -87,6 +94,14 @@ public final class Config
   public DeviceLocales device_locales = null;
   public Cdict current_dictionary = null; // Might be 'null'.
   public Cdict emoji_dictionary = null; // Might be 'null'.
+  // Pinyin input mode
+  public boolean pinyin_enabled = false;
+  public int pinyin_scheme = 0; // 0=Microsoft, reserved for future schemes
+  public Cdict pinyin_dictionary = null; // Might be 'null'.
+  /** When true, the user has manually toggled pinyin mode via the
+      switch_lang key. [refresh_current_dictionary] must not override
+      [pinyin_enabled] in that case; only a real subtype change resets it. */
+  public boolean pinyin_user_override = false;
   public IKeyEventHandler handler;
   public boolean orientation_landscape = false;
   public boolean foldable_unfolded = false;
@@ -97,8 +112,16 @@ public final class Config
   int current_layout_wide;
   /** Whether to automatically split the layout. */
   public boolean split_layout;
-  /** Whether the keyboard is displayed as a floating, movable window. */
+  /** Whether the floating keyboard FEATURE is enabled in settings. When
+      true, the user can toggle floating on/off via the fn (TOGGLE_FLOATING)
+      key. This does NOT directly make the keyboard floating — it just enables
+      the toggle capability. */
   public boolean floating_keyboard = false;
+  /** Whether the keyboard is CURRENTLY in floating mode. This is a runtime
+      state toggled by the TOGGLE_FLOATING key, initialized to false (docked)
+      on startup. Only meaningful when [floating_keyboard] (the feature) is
+      enabled. */
+  public boolean floating_keyboard_active = false;
   /** Width of the floating keyboard, as a percentage of screen width (40-100). */
   public int floating_keyboard_width = 80;
   /** Saved X position of the floating keyboard, in pixels. [Float.MIN_VALUE] means unset. */
@@ -186,6 +209,7 @@ public final class Config
     customBorderRadius = _prefs.getInt("custom_border_radius", 0) / 100.f;
     customBorderLineWidth = get_dip_pref(dm, "custom_border_line_width", 0);
     screenHeightPixels = dm.heightPixels;
+    screenWidthPixels = dm.widthPixels;
     // Rows height is proportional to the screen height, meaning it doesn't
     // change for layouts with more or less rows. 3.95 is the usual height of
     // a layout in KeyboardData unit. The keyboard will be higher if the layout
@@ -211,6 +235,7 @@ public final class Config
     clipboard_history_duration = Integer.parseInt(_prefs.getString("clipboard_history_duration", "5"));
     space_bar_auto_complete = _prefs.getBoolean("space_bar_auto_complete", false);
     physical_keyboard_hide = _prefs.getString("physical_keyboard_behavior", "hide").equals("hide");
+    keyevent_compat = _prefs.getBoolean("keyevent_compat", false);
     float screen_width_dp = dm.widthPixels / dm.density;
     wide_screen = screen_width_dp >= WIDE_DEVICE_THRESHOLD;
     floating_keyboard = _prefs.getBoolean("floating_keyboard", false);
@@ -226,7 +251,7 @@ public final class Config
     split_layout = get_split_layout();
     // In floating mode, override keyboard height and disable split layout
     // so the keyboard looks the same in portrait and landscape.
-    if (floating_keyboard)
+    if (floating_keyboard_active)
     {
       keyboard_rows_height_pixels = screenHeightPixels * floating_keyboard_height / 395;
       split_layout = false;
