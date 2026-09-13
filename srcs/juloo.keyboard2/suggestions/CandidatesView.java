@@ -261,8 +261,9 @@ public class CandidatesView extends LinearLayout
     set_sizes(config);
   }
 
-  /** Set the height of the suggestion row and the text size. */
-  void set_sizes(Config config)
+  /** Set the height of the suggestion row and the text size. Public because
+      the floating keyboard resize path updates the sizes during the drag. */
+  public void set_sizes(Config config)
   {
     // Make the candidates view shorter than a keyboard row to save space.
     float row_height = config.keyboard_rows_height_pixels

@@ -30,6 +30,7 @@ import juloo.keyboard2.prefs.LayoutsPreference;
 import juloo.keyboard2.suggestions.CandidatesView;
 import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.pinyin.PinyinDict;
+import juloo.keyboard2.pinyin.PinyinUserDict;
 
 public class Keyboard2 extends InputMethodService
   implements SharedPreferences.OnSharedPreferenceChangeListener
@@ -133,6 +134,8 @@ public class Keyboard2 extends InputMethodService
     // Pre-load the built-in pinyin dictionary from assets so that
     // PinyinDict.built_in() returns the full 78k-entry dictionary.
     PinyinDict.init(this);
+    // Load the user's learned pinyin words so queries can rank them first
+    PinyinUserDict.init(this);
     Config.initGlobalConfig(prefs, getResources(),
         _foldStateTracker.isUnfolded(), _dictionaries);
     _config = Config.globalConfig();
@@ -215,16 +218,16 @@ public class Keyboard2 extends InputMethodService
     // refresh_config() call (e.g. from SWITCH_LANG) must preserve it.
     boolean user_override = _config.pinyin_user_override;
     boolean user_pinyin = _config.pinyin_enabled;
+    boolean subtype_pinyin = (_config.device_locales.default_ != null)
+      && _config.device_locales.default_.pinyin;
+    // Compute pinyin_enabled first: it must not depend on dictionary loading
+    // succeeding, and the user's manual toggle wins over the subtype marker.
+    _config.pinyin_enabled = user_override ? user_pinyin : subtype_pinyin;
     _config.current_dictionary = null;
     _config.emoji_dictionary = null;
     _config.pinyin_dictionary = null;
-    _config.pinyin_enabled = false;
     if (_config.device_locales.default_ == null)
       return;
-    // Enable pinyin mode if the subtype has the pinyin marker, unless the
-    // user has manually toggled — then their choice wins.
-    boolean subtype_pinyin = _config.device_locales.default_.pinyin;
-    _config.pinyin_enabled = user_override ? user_pinyin : subtype_pinyin;
     String current = _config.device_locales.default_.dictionary;
     if (current == null)
       return;
@@ -291,11 +294,13 @@ public class Keyboard2 extends InputMethodService
   }
 
   /** Re-measure the keyboard after a floating resize. Called by
-      [FloatingKeyboardManager] during resize drag. */
+      [FloatingKeyboardManager] during resize drag. Only triggers a
+      re-layout: the keyboard geometry (key width, row height) is derived
+      from the measured size in onMeasure, so rebuilding the layout data
+      with setKeyboard() is not needed on every move event. */
   void refresh_floating_keyboard()
   {
-    _keyboard_layout_view.reset();
-    _keyboard_layout_view.setKeyboard(current_layout());
+    _candidates_view.set_sizes(_config);
     _keyboard_container_view.requestLayout();
   }
 

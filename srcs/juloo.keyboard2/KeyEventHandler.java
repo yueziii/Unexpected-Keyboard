@@ -12,6 +12,7 @@ import java.util.Iterator;
 import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.pinyin.PinyinInput;
 import juloo.keyboard2.pinyin.PinyinSchemes;
+import juloo.keyboard2.pinyin.PinyinUserDict;
 
 public final class KeyEventHandler
   implements Config.IKeyEventHandler,
@@ -250,6 +251,8 @@ public final class KeyEventHandler
         else
           conn.finishComposingText();
         conn.endBatchEdit();
+        // Learn the committed word so it ranks first in future queries
+        PinyinUserDict.record(text);
       }
       if (has_remaining)
         _pinyin.query_candidates();

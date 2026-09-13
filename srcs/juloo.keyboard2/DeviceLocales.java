@@ -82,6 +82,10 @@ public final class DeviceLocales
     for (Loc l : installed)
       if (l.lang_tag.equals(default_lang_tag))
         return l;
-    return null;
+    // The current subtype might not be in the enabled list yet (for example
+    // right after being switched to, or when the system selected it
+    // implicitly). Return it directly instead of null so that subtype
+    // markers like the pinyin flag are not lost.
+    return new Loc(current_subtype);
   }
 }

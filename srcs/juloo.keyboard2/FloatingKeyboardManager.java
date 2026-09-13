@@ -67,6 +67,18 @@ public final class FloatingKeyboardManager
   private float _resizeStartRawY;
   private int _resizeStartWidthPx;
   private int _resizeStartHeightPx;
+  /** Ratio between the container's full height and
+      [Config.keyboard_rows_height_pixels], measured at gesture start. Used
+      to convert the dragged height into a rows height so the achieved
+      keyboard size tracks the finger (the container also holds the
+      candidates bar and margins, which scale with the rows height). */
+  private float _rowsHeightScale = 4.7f;
+  /** While resizing, re-applies the translation after every layout pass so
+      the keyboard stays pinned to (_posX,_posY) while its size changes.
+      Without this, the bottom-anchored container visibly jumps whenever a
+      new height applies (the natural top shifts) and gets corrected at the
+      next move event, alternating at frame rate. */
+  private ViewTreeObserver.OnPreDrawListener _resizePreDrawListener;
 
   public FloatingKeyboardManager(Keyboard2 ime, Config config)
   {
@@ -222,31 +234,43 @@ public final class FloatingKeyboardManager
    */
   private void applyContainerWidth(View container)
   {
+    applyContainerWidth(container, _floatWidth);
+  }
+
+  /** Set the container width to [targetWidthPx]. Only calls
+      [setLayoutParams] when a value actually changed — it triggers a full
+      layout pass, which must not happen on every resize move event. */
+  private void applyContainerWidth(View container, int targetWidthPx)
+  {
     ViewGroup.LayoutParams lp = container.getLayoutParams();
     if (lp == null) return;
-    int targetWidth = (_floatWidth < _screenWidth) ? _floatWidth
-        : ViewGroup.LayoutParams.MATCH_PARENT;
-    if (lp.width != targetWidth)
-      lp.width = targetWidth;
+    int targetWidth = (targetWidthPx > 0 && targetWidthPx < _screenWidth)
+      ? targetWidthPx : ViewGroup.LayoutParams.MATCH_PARENT;
+    boolean changed = (lp.width != targetWidth);
+    lp.width = targetWidth;
     // Reset margins and gravity — positioning is via translation only
     if (lp instanceof FrameLayout.LayoutParams)
     {
       FrameLayout.LayoutParams flp = (FrameLayout.LayoutParams) lp;
-      flp.gravity = Gravity.BOTTOM | Gravity.START;
+      if (flp.gravity != (Gravity.BOTTOM | Gravity.START))
+      {
+        flp.gravity = Gravity.BOTTOM | Gravity.START;
+        changed = true;
+      }
       flp.leftMargin = 0;
-      container.setLayoutParams(flp);
     }
     else if (lp instanceof LinearLayout.LayoutParams)
     {
       LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
-      llp.gravity = Gravity.BOTTOM | Gravity.START;
+      if (llp.gravity != (Gravity.BOTTOM | Gravity.START))
+      {
+        llp.gravity = Gravity.BOTTOM | Gravity.START;
+        changed = true;
+      }
       llp.leftMargin = 0;
-      container.setLayoutParams(llp);
     }
-    else
-    {
+    if (changed)
       container.setLayoutParams(lp);
-    }
   }
 
   /**
@@ -283,6 +307,53 @@ public final class FloatingKeyboardManager
   private void updateScreenRect(View container)
   {
     // No need to store rect — computeFloatingInsets reads it directly
+  }
+
+  /** While resizing, keep applying the translation after every layout pass
+      with the fresh (post-layout) container size. Computing the translation
+      from the stale pre-layout size instead makes the keyboard jump by the
+      height delta every frame. */
+  private void start_resize_translation_sync()
+  {
+    if (_resizePreDrawListener != null || _container == null)
+      return;
+    _resizePreDrawListener = new ViewTreeObserver.OnPreDrawListener()
+    {
+      @Override
+      public boolean onPreDraw()
+      {
+        if (_container != null)
+          sync_translation(_container);
+        return true;
+      }
+    };
+    _container.getViewTreeObserver().addOnPreDrawListener(_resizePreDrawListener);
+  }
+
+  private void stop_resize_translation_sync()
+  {
+    if (_resizePreDrawListener != null && _container != null)
+      _container.getViewTreeObserver().removeOnPreDrawListener(
+          _resizePreDrawListener);
+    _resizePreDrawListener = null;
+  }
+
+  /** Apply the translation so the container's top-left lands on the clamped
+      (_posX,_posY), using the container's current (post-layout) size. */
+  private void sync_translation(View container)
+  {
+    int w = container.getWidth();
+    int h = container.getHeight();
+    if (w <= 0 || h <= 0)
+      return;
+    _posX = clampX(_posX, w);
+    _posY = clampY(_posY, h);
+    int[] loc = new int[2];
+    container.getLocationOnScreen(loc);
+    float naturalLeft = loc[0] - container.getTranslationX();
+    float naturalTop = loc[1] - container.getTranslationY();
+    container.setTranslationX(_posX - naturalLeft);
+    container.setTranslationY(_posY - naturalTop);
   }
 
   /** Disable floating mode: reset width, translation, margins. */
@@ -436,6 +507,9 @@ public final class FloatingKeyboardManager
         _resizeStartRawY = event.getRawY();
         _resizeStartWidthPx = _container.getWidth();
         _resizeStartHeightPx = _container.getHeight();
+        int rows = _config.keyboard_rows_height_pixels;
+        if (rows > 0)
+          _rowsHeightScale = _resizeStartHeightPx / (float)rows;
         _isResizing = false;
         return true;
       }
@@ -444,53 +518,34 @@ public final class FloatingKeyboardManager
         float dx = event.getRawX() - _resizeStartRawX;
         float dy = event.getRawY() - _resizeStartRawY;
         if (!_isResizing && (Math.abs(dx) > 8 || Math.abs(dy) > 8))
+        {
           _isResizing = true;
+          // Keep the translation corrected after every layout pass while
+          // the container's size changes.
+          start_resize_translation_sync();
+        }
         if (_isResizing)
         {
-          // Compute new width in pixels
-          int newWidthPx = _resizeStartWidthPx + (int) dx;
-          int minWidthPx = _screenWidth * MIN_WIDTH_PCT / 100;
-          int maxWidthPx = _screenWidth * MAX_WIDTH_PCT / 100;
-          newWidthPx = Math.max(minWidthPx, Math.min(newWidthPx, maxWidthPx));
+          // Raw pixel size, clamped to the min/max bounds. Do not quantize
+          // to integer percents during the drag: one percent is tens of
+          // pixels, which makes slow drags jump.
+          int newWidthPx = Math.max(_screenWidth * MIN_WIDTH_PCT / 100,
+              Math.min(_resizeStartWidthPx + (int)dx,
+                _screenWidth * MAX_WIDTH_PCT / 100));
+          int newHeightPx = Math.max(_screenHeight * MIN_HEIGHT_PCT / 100,
+              Math.min(_resizeStartHeightPx + (int)dy,
+                _screenHeight * MAX_HEIGHT_PCT / 100));
 
-          // Compute new height in pixels
-          int newHeightPx = _resizeStartHeightPx + (int) dy;
-          int minHeightPx = _screenHeight * MIN_HEIGHT_PCT / 100;
-          int maxHeightPx = _screenHeight * MAX_HEIGHT_PCT / 100;
-          newHeightPx = Math.max(minHeightPx, Math.min(newHeightPx, maxHeightPx));
+          // Convert the dragged height into the rows height using the ratio
+          // measured at gesture start, so the achieved height matches the
+          // finger during the whole gesture. Percent config values are only
+          // written when the gesture ends.
+          _config.keyboard_rows_height_pixels =
+            Math.max(1, (int)(newHeightPx / _rowsHeightScale));
+          _floatWidth = newWidthPx;
 
-          // Convert height to percentage and update config + keyboard
-          int heightPct = newHeightPx * 100 / _screenHeight;
-          heightPct = Math.max(MIN_HEIGHT_PCT, Math.min(heightPct, MAX_HEIGHT_PCT));
-          _config.floating_keyboard_height = heightPct;
-          _config.keyboard_rows_height_pixels = _screenHeight * heightPct / 395;
-
-          // Convert width to percentage
-          int widthPct = newWidthPx * 100 / _screenWidth;
-          widthPct = Math.max(MIN_WIDTH_PCT, Math.min(widthPct, MAX_WIDTH_PCT));
-          _config.floating_keyboard_width = widthPct;
-          _floatWidth = _screenWidth * widthPct / 100;
-
-          // Apply new width to container
           applyContainerWidth(_container);
-
-          // Force keyboard to re-measure with new height
           _ime.refresh_floating_keyboard();
-
-          // Re-clamp position for new size
-          int w = _container.getWidth();
-          int h = _container.getHeight();
-          if (w > 0 && h > 0)
-          {
-            _posX = clampX(_posX, w);
-            _posY = clampY(_posY, h);
-            int[] curLoc = new int[2];
-            _container.getLocationOnScreen(curLoc);
-            float naturalLeft = curLoc[0] - _container.getTranslationX();
-            float naturalTop = curLoc[1] - _container.getTranslationY();
-            _container.setTranslationX(_posX - naturalLeft);
-            _container.setTranslationY(_posY - naturalTop);
-          }
           _container.requestApplyInsets();
         }
         return true;
@@ -498,11 +553,30 @@ public final class FloatingKeyboardManager
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL:
         if (_isResizing)
+        {
+          _isResizing = false;
+          stop_resize_translation_sync();
+          // Persist the size as integer percents derived from the final
+          // values used during the drag, so re-deriving them from the
+          // percents lands back on (nearly) the same size instead of
+          // snapping to a quantized value.
+          _config.floating_keyboard_height = clampPercent(
+              Math.round(_config.keyboard_rows_height_pixels * 395f
+                / _screenHeight),
+              MIN_HEIGHT_PCT, MAX_HEIGHT_PCT);
+          _config.floating_keyboard_width = clampPercent(
+              Math.round(_floatWidth * 100f / _screenWidth),
+              MIN_WIDTH_PCT, MAX_WIDTH_PCT);
           _config.save_floating_size(_config.floating_keyboard_width,
               _config.floating_keyboard_height);
-        _isResizing = false;
+        }
         return true;
     }
     return false;
+  }
+
+  private static int clampPercent(int pct, int min, int max)
+  {
+    return Math.max(min, Math.min(pct, max));
   }
 }

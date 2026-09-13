@@ -10,6 +10,7 @@ import juloo.keyboard2.ComposeKey;
 import juloo.keyboard2.ComposeKeyData;
 import juloo.keyboard2.pinyin.PinyinInput;
 import juloo.keyboard2.pinyin.PinyinDict;
+import juloo.keyboard2.pinyin.PinyinUserDict;
 
 /** Keep track of the word being typed and provide suggestions for
     [CandidatesView].
@@ -62,7 +63,11 @@ public final class Suggestions
 
   public void currently_typed_word(String word)
   {
-    if (!_enabled)
+    // Pinyin mode manages its own candidates. The latin word tracker fires
+    // shortly after every keystroke; letting it run in pinyin mode would
+    // overwrite the pinyin candidates with an empty set (it knows nothing
+    // about the pinyin buffer and clears when no latin dictionary is set).
+    if (!_enabled || pinyin_preview != null || !pinyin_candidates.isEmpty())
       return;
     if (word.length() < 2 || _config.current_dictionary == null)
       clear();
@@ -130,6 +135,9 @@ public final class Suggestions
         candidates.add(e.word);
       }
     }
+    // Words the user committed before are promoted to the front, most used
+    // first, so personal usage habits win over raw dictionary frequencies.
+    PinyinUserDict.rank_by_user_usage(candidates);
 
     pinyin_candidates.clear();
     pinyin_candidates.addAll(candidates);
