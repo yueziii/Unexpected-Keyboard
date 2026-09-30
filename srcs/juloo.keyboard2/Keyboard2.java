@@ -29,7 +29,7 @@ import juloo.keyboard2.dict.DictionariesActivity;
 import juloo.keyboard2.prefs.LayoutsPreference;
 import juloo.keyboard2.suggestions.CandidatesView;
 import juloo.keyboard2.suggestions.Suggestions;
-import juloo.keyboard2.pinyin.PinyinDict;
+import juloo.keyboard2.pinyin.PinyinData;
 import juloo.keyboard2.pinyin.PinyinUserDict;
 
 public class Keyboard2 extends InputMethodService
@@ -131,9 +131,9 @@ public class Keyboard2 extends InputMethodService
     _handler = new Handler(getMainLooper());
     _foldStateTracker = new FoldStateTracker(this);
     _dictionaries = Dictionaries.instance(this);
-    // Pre-load the built-in pinyin dictionary from assets so that
-    // PinyinDict.built_in() returns the full 78k-entry dictionary.
-    PinyinDict.init(this);
+    // Pre-load the compiled pinyin dictionary and bigram model from assets
+    // (py_dict.bin / py_bigram.bin, see scripts/gen_pinyin_bin.py).
+    PinyinData.init(this);
     // Load the user's learned pinyin words so queries can rank them first
     PinyinUserDict.init(this);
     Config.initGlobalConfig(prefs, getResources(),
@@ -225,7 +225,6 @@ public class Keyboard2 extends InputMethodService
     _config.pinyin_enabled = user_override ? user_pinyin : subtype_pinyin;
     _config.current_dictionary = null;
     _config.emoji_dictionary = null;
-    _config.pinyin_dictionary = null;
     if (_config.device_locales.default_ == null)
       return;
     String current = _config.device_locales.default_.dictionary;
@@ -236,9 +235,8 @@ public class Keyboard2 extends InputMethodService
       return;
     _config.current_dictionary = Dictionaries.find_by_name(dicts, "main");
     _config.emoji_dictionary = Dictionaries.find_by_name(dicts, "emoji");
-    // In pinyin mode, the main dictionary is also the pinyin dictionary
-    if (_config.pinyin_enabled)
-      _config.pinyin_dictionary = _config.current_dictionary;
+    // Pinyin candidates come from the built-in compiled dictionary
+    // (PinyinData); the English dictionary is not involved.
   }
 
   private void refresh_candidates_view()

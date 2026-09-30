@@ -3,12 +3,19 @@ package juloo.keyboard2;
 import android.annotation.SuppressLint;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.view.InputDevice;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.pinyin.PinyinInput;
 import juloo.keyboard2.pinyin.PinyinSchemes;
@@ -37,12 +44,21 @@ public final class KeyEventHandler
   boolean _move_cursor_force_fallback = false;
   /** Whether the space bar automatically enters the best suggestion. */
   boolean _space_bar_auto_complete = false;
-  /** Compatibility mode for apps that do not forward soft keyboard key
- events (e.g. remote desktop apps). When true, key events are sent without
- FLAG_SOFT_KEYBOARD / FLAG_KEEP_TOUCH_MODE and with a non-virtual device
- id (0) so they are more likely to be forwarded as if from a physical
- keyboard. */
+  /** Compatibility mode for remote desktop apps. When true, key events that
+      involve Ctrl/Alt/Meta are sent like physical keyboard input (no
+      FLAG_SOFT_KEYBOARD / FLAG_KEEP_TOUCH_MODE, real keyboard device id and
+      scancode, see [HardwareKeyMap]) so apps such as UU Remote forward them.
+      Other keys keep the soft-keyboard channel: they are already forwarded
+      through the editor's text handling, and hardware-like synthetic events
+      would be filtered out entirely. */
   boolean _keyevent_compat = false;
+  /** Modifier keycodes whose ACTION_DOWN was sent through the hardware-like
+      channel in compat mode. Their ACTION_UP must use the same channel even
+      if the other modifiers of the combo were released in between. */
+  final Set<Integer> _hw_modifier_downs = new HashSet<Integer>();
+  /** Time of the ACTION_DOWN of each hardware-like key event, by keycode, so
+      that the matching ACTION_UP reports a realistic hold duration. */
+  final Map<Integer, Long> _hw_key_down_times = new HashMap<Integer, Long>();
   /** Remember the action that was handled. This is used by autocorrect. */
   LastAction _last_action = null;
   LastAction _next_last_action = null;
@@ -75,11 +91,17 @@ public final class KeyEventHandler
     {
       if (_pinyin == null)
         _pinyin = new PinyinInput();
-      _pinyin.started(PinyinSchemes.get(conf.pinyin_scheme),
-          conf.pinyin_dictionary, _suggestions);
+      _pinyin.started(pinyin_scheme(conf), _suggestions);
     }
     else
       _pinyin = null;
+  }
+
+  /** The pinyin scheme from the config: null for full pinyin (the engine
+      segments the letters itself), the scheme tables for double pinyin. */
+  static PinyinSchemes.Scheme pinyin_scheme(Config conf)
+  {
+    return conf.pinyin_scheme == 0 ? null : PinyinSchemes.get(conf.pinyin_scheme);
   }
 
   /** Called when the language mode is switched (pinyin on/off toggle).
@@ -97,8 +119,7 @@ public final class KeyEventHandler
     {
       // Pinyin was just enabled — initialize it
       _pinyin = new PinyinInput();
-      _pinyin.started(PinyinSchemes.get(conf.pinyin_scheme),
-          conf.pinyin_dictionary, _suggestions);
+      _pinyin.started(pinyin_scheme(conf), _suggestions);
     }
   }
 
@@ -153,25 +174,59 @@ public final class KeyEventHandler
     switch (key.getKind())
     {
       case Char:
-        // In pinyin mode, intercept letter keys to build the pinyin buffer.
-        // The ';' key is the "ing" final in Microsoft double pinyin, so it is
-        // intercepted as a pinyin keystroke when there is a pending initial.
-        // Other non-letter chars flush the pinyin buffer first.
+        // In pinyin mode, lowercase letters build the pinyin buffer. The
+        // ';' key is the "ing" final in Microsoft double pinyin. Punctuation
+        // and digits commit the current composition first, like mainstream
+        // Chinese IMEs.
         char ch = key.getChar();
-        if (_pinyin != null
-            && (Character.isLetter(ch)
-                || (ch == ';' && _pinyin.is_active() && _pinyin.pending_final())))
+        char lower = Character.toLowerCase(ch);
+        if (_pinyin != null && lower >= 'a' && lower <= 'z' && ch == lower)
         {
-          _pinyin.key_typed(ch);
+          _pinyin.key_typed(lower);
           _pinyin.query_candidates();
           update_pinyin_composing();
         }
+        else if (_pinyin != null && lower >= 'a' && lower <= 'z')
+        {
+          // Uppercase letter: commit the conversion, then type the letter
+          // itself (e.g. shift for an acronym).
+          accept_first_candidate();
+          send_text(String.valueOf(ch));
+        }
+        else if (_pinyin != null && ch == ';'
+            && _pinyin.is_active() && _pinyin.pending_final())
+        {
+          // Double pinyin "ing" final.
+          _pinyin.key_typed(';');
+          _pinyin.query_candidates();
+          update_pinyin_composing();
+        }
+        else if (_pinyin != null && ch >= '1' && ch <= '9'
+            && _pinyin.is_active())
+        {
+          // Digits select the matching candidate while composing; otherwise
+          // they are typed normally (phone numbers...).
+          List<PinyinInput.Candidate> cands = _pinyin.get_candidates();
+          int idx = ch - '1';
+          if (idx < cands.size())
+          {
+            suggestion_entered(cands.get(idx).text);
+            break;
+          }
+          commit_pinyin_raw();
+          send_text(String.valueOf(ch));
+        }
         else if (_pinyin != null && _pinyin.is_active())
         {
-          // Non-letter while pinyin buffer is pending: flush raw pinyin,
-          // then send the character.
-          flush_pinyin();
-          send_text(String.valueOf(ch));
+          // Punctuation while composing: commit the best candidate, then
+          // send the Chinese form of the punctuation mark.
+          accept_first_candidate();
+          send_text(chinese_punctuation(ch));
+        }
+        else if (_pinyin != null)
+        {
+          // Chinese mode, idle: punctuation produces full-width marks.
+          send_text(chinese_punctuation(ch));
         }
         else
           send_text(String.valueOf(ch));
@@ -179,7 +234,7 @@ public final class KeyEventHandler
       case String:
       {
         String str = key.getString();
-        // In pinyin mode, ";" is the "ing" final; intercept it when a
+        // In double pinyin mode, ";" is the "ing" final; intercept it when a
         // final is pending, same as the Char branch above.
         if (_pinyin != null && str.equals(";")
             && _pinyin.is_active() && _pinyin.pending_final())
@@ -187,6 +242,17 @@ public final class KeyEventHandler
           _pinyin.key_typed(';');
           _pinyin.query_candidates();
           update_pinyin_composing();
+        }
+        else if (_pinyin != null && str.length() == 1)
+        {
+          char sch = str.charAt(0);
+          if (_pinyin.is_active())
+          {
+            accept_first_candidate();
+            send_text(chinese_punctuation(sch));
+          }
+          else
+            send_text(chinese_punctuation(sch));
         }
         else
         {
@@ -196,7 +262,20 @@ public final class KeyEventHandler
         break;
       }
       case Event: flush_pinyin(); _recv.handle_event_key(key.getEvent()); break;
-      case Keyevent: flush_pinyin(); send_key_down_up(key.getKeyevent()); break;
+      case Keyevent:
+        if (_pinyin != null && _pinyin.is_active()
+            && key.getKeyevent() == KeyEvent.KEYCODE_ENTER)
+        {
+          // Enter while composing commits the raw pinyin letters (like
+          // mainstream IMEs); a second Enter adds the newline.
+          commit_pinyin_raw();
+        }
+        else
+        {
+          flush_pinyin();
+          send_key_down_up(key.getKeyevent());
+        }
+        break;
       case Modifier: break;
       case Editing:
         // In pinyin mode, BACKSPACE and DELETE_WORD should edit the pinyin
@@ -238,24 +317,30 @@ public final class KeyEventHandler
     if (_pinyin != null && _pinyin.is_active())
     {
       InputConnection conn = _recv.getCurrentInputConnection();
-      // Accept the candidate: consume matching syllables, keep the rest
-      String preview = _pinyin.get_pinyin_string();
-      boolean has_remaining = _pinyin.accept_candidate(text, preview);
+      // Accept the candidate: it consumes its keystrokes, the rest of the
+      // buffer stays for continued input (sentence input).
+      int consumed = _pinyin.accept_candidate(text);
+      if (consumed < 0)
+      {
+        // Not a current candidate (stale view?): commit raw pinyin.
+        commit_pinyin_raw();
+        return;
+      }
       if (conn != null)
       {
         conn.beginBatchEdit();
         // Committing the candidate replaces the current composing text
         conn.commitText(text, 1);
-        if (has_remaining)
-          conn.setComposingText(_pinyin.get_pinyin_string(), 1);
-        else
-          conn.finishComposingText();
         conn.endBatchEdit();
         // Learn the committed word so it ranks first in future queries
         PinyinUserDict.record(text);
       }
+      boolean has_remaining = _pinyin.is_active();
       if (has_remaining)
+      {
         _pinyin.query_candidates();
+        update_pinyin_composing();
+      }
       else
       {
         _suggestions.clear();
@@ -270,6 +355,57 @@ public final class KeyEventHandler
     last_replaced_word = old;
     last_replacement_word_len = text.length();
     _next_last_action = LastAction.SUGGESTION_ENTERED;
+  }
+
+  /** Commit the first (best) candidate, if any. Used before punctuation and
+      uppercase letters, matching mainstream IME behavior. */
+  void accept_first_candidate()
+  {
+    List<PinyinInput.Candidate> cands = _pinyin.get_candidates();
+    if (!cands.isEmpty())
+      suggestion_entered(cands.get(0).text);
+    else
+      flush_pinyin();
+  }
+
+  /** Commit the raw pinyin letters (what the user actually typed) and clear
+      the buffer. Used by the Enter key, like mainstream IMEs. */
+  void commit_pinyin_raw()
+  {
+    if (_pinyin == null || !_pinyin.is_active())
+      return;
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (conn != null)
+      conn.commitText(_pinyin.get_buffer(), 1);
+    _pinyin.reset();
+    _suggestions.clear();
+    _recv.set_suggestions(_suggestions);
+  }
+
+  /** The full-width form of a punctuation character in Chinese mode.
+      Characters without a Chinese form are returned unchanged. */
+  static String chinese_punctuation(char c)
+  {
+    switch (c)
+    {
+      case ',': return "，";
+      case '.': return "。";
+      case '?': return "？";
+      case '!': return "！";
+      case ':': return "：";
+      case ';': return "；";
+      case '(': return "（";
+      case ')': return "）";
+      case '<': return "《";
+      case '>': return "》";
+      case '[': return "【";
+      case ']': return "】";
+      case '~': return "～";
+      case '_': return "——";
+      case '\'': return "‘";
+      case '"': return "“";
+      default: return String.valueOf(c);
+    }
   }
 
   @Override
@@ -372,20 +508,61 @@ public final class KeyEventHandler
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn == null)
       return;
-    // In compat mode, omit FLAG_SOFT_KEYBOARD / FLAG_KEEP_TOUCH_MODE and
-    // use a non-virtual device id (0) so that apps which filter out
-    // soft-keyboard events (e.g. UU Remote, ToDesk, Sunlogin) still receive
-    // and forward key events such as Ctrl+C, Win, etc. Some remote desktop
-    // apps discard events whose device id is VIRTUAL_KEYBOARD (-1), so
-    // using 0 (the first physical keyboard) can improve compatibility.
-    int flags = _keyevent_compat
-      ? 0
-      : (KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE);
-    int deviceId = _keyevent_compat
-      ? 0
-      : KeyCharacterMap.VIRTUAL_KEYBOARD;
-    conn.sendKeyEvent(new KeyEvent(1, 1, eventAction, eventCode, 0,
-          metaState, deviceId, 0, flags));
+    // In compat mode, events that involve Ctrl/Alt/Meta are sent like they
+    // come from a physical keyboard: no soft-keyboard flags, the device id
+    // of a real keyboard and a non-zero scancode. Some remote desktop apps
+    // (e.g. UU Remote) discard such synthetic events otherwise. Plain keys
+    // such as Enter and Backspace keep the soft-keyboard channel, which is
+    // how these apps already forward them (through their editor's text
+    // handling); hardware-like synthetic events would be filtered out.
+    boolean hardware_like = _keyevent_compat
+      && HardwareKeyMap.needs_hardware_channel(eventCode, metaState);
+    if (HardwareKeyMap.is_modifier_keycode(eventCode))
+    {
+      if (eventAction == KeyEvent.ACTION_DOWN)
+      {
+        if (hardware_like)
+          _hw_modifier_downs.add(eventCode);
+        else
+          _hw_modifier_downs.remove(eventCode);
+      }
+      else if (_hw_modifier_downs.contains(eventCode))
+      {
+        hardware_like = true;
+        _hw_modifier_downs.remove(eventCode);
+      }
+    }
+    KeyEvent event;
+    if (hardware_like)
+    {
+      // Mimic a physical keyboard event as closely as possible: real
+      // timestamps and the keyboard source. Synthetic-looking fields
+      // (downtime 1, unknown source) are another thing remote apps can
+      // filter on.
+      long now = SystemClock.uptimeMillis();
+      long down_time;
+      if (eventAction == KeyEvent.ACTION_DOWN)
+      {
+        down_time = now;
+        _hw_key_down_times.put(eventCode, now);
+      }
+      else
+      {
+        Long t = _hw_key_down_times.remove(eventCode);
+        down_time = t == null ? now : t;
+      }
+      event = new KeyEvent(down_time, now, eventAction, eventCode, 0,
+          metaState, HardwareKeyMap.keyboard_device_id(),
+          HardwareKeyMap.scancode_for(eventCode), 0);
+      event.setSource(InputDevice.SOURCE_KEYBOARD);
+    }
+    else
+    {
+      event = new KeyEvent(1, 1, eventAction, eventCode, 0, metaState,
+          KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+          KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE);
+    }
+    conn.sendKeyEvent(event);
     if (eventAction == KeyEvent.ACTION_UP)
     {
       _autocap.event_sent(eventCode, metaState);
@@ -731,16 +908,17 @@ public final class KeyEventHandler
     _recv.set_suggestions(_suggestions);
   }
 
-  /** Update the editor's composing text to show the current pinyin preview.
-      This makes the pinyin being typed visible (underlined) in the editor,
-      matching mainstream IME behavior. */
+  /** Update the editor's composing text to show the current best
+      conversion (e.g. 今天天气很好), falling back to the pinyin preview when
+      nothing converts. This is what mainstream IMEs underline in the
+      editor. The raw pinyin stays visible in the candidates bar. */
   void update_pinyin_composing()
   {
     if (_pinyin == null || !_pinyin.is_active())
       return;
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn != null)
-      conn.setComposingText(_pinyin.get_pinyin_string(), 1);
+      conn.setComposingText(_pinyin.composing_text(), 1);
   }
 
   /** Clear the pinyin composing text from the editor without leaving any
@@ -761,11 +939,8 @@ public final class KeyEventHandler
     if (_pinyin != null && _pinyin.is_active())
     {
       // In pinyin mode, space accepts the first pinyin candidate. If no
-      // candidate is available, commit the raw pinyin preview.
-      if (!_suggestions.pinyin_candidates.isEmpty())
-        suggestion_entered(_suggestions.pinyin_candidates.get(0));
-      else
-        flush_pinyin();
+      // candidate is available, commit the conversion as-is.
+      accept_first_candidate();
       return;
     }
     if (_space_bar_auto_complete && _suggestions.count > 0

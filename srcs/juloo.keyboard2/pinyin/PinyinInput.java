@@ -2,187 +2,268 @@ package juloo.keyboard2.pinyin;
 
 import java.util.ArrayList;
 import java.util.List;
-import juloo.cdict.Cdict;
 import juloo.keyboard2.suggestions.Suggestions;
 
 /**
- * Pinyin input state machine for double pinyin.
+ * Pinyin input state machine.
  *
- * Tracks keystrokes, decodes them into pinyin syllables, and provides
- * candidates. Supports continuous input: after accepting a candidate, the
- * remaining unmatched syllables stay in the buffer for further input.
+ * Holds the raw keystroke buffer and produces candidates through
+ * [PinyinEngine]. Two input schemes are supported:
  *
- * The candidates view shows:
- *   - Position 0: current pinyin preview (e.g. "ni hao") when no candidate
- *     has been selected yet, or the first candidate word
- *   - Positions 1-2: additional candidates
+ * - Full pinyin (全拼): the buffer is the pinyin letters themselves; the
+ *   engine matches word pinyins against the letter string directly.
+ * - Double pinyin (双拼, e.g. Microsoft): every syllable is two keystrokes;
+ *   the buffer is translated to pinyin letters through the scheme before
+ *   decoding, and consumed keystrokes are 2 per accepted syllable.
+ *
+ * The candidates view shows the pinyin preview separately from the
+ * scrollable candidate strip.
  */
 public final class PinyinInput
 {
+  /** One candidate: the text to commit and how many buffer keystrokes it
+      consumes. The remaining keystrokes stay in the buffer for continued
+      input (整句输入: accept pieces of the sentence one after another). */
+  public static final class Candidate
+  {
+    public final String text;
+    public final int keys_consumed;
+
+    Candidate(String t, int keys)
+    {
+      text = t;
+      keys_consumed = keys;
+    }
+  }
+
+  /** Null for full pinyin; the scheme tables for double pinyin. */
   private PinyinSchemes.Scheme _scheme;
-  private Cdict _dict;
   private Suggestions _suggestions;
 
-  /** Raw keystroke buffer (lowercase letters). */
+  /** Raw keystroke buffer (lowercase letters and ';' in double pinyin). */
   private StringBuilder _buffer = new StringBuilder();
-  /** Decoded syllables, e.g. ["ni", "hao"]. */
-  private List<String> _syllables = new ArrayList<String>();
+  /** Pinyin letters fed to the engine (buffer itself in full pinyin; the
+      scheme translation in double pinyin). */
+  private String _letters = "";
+  /** Candidates for the current buffer, or null when not queried yet. */
+  private List<Candidate> _candidates = null;
+  /** Pinyin preview, e.g. "ni'hao" (full) or "ni hao" (double). */
+  private String _preview = "";
+  /** Best candidate's syllables, used for the preview. */
+  private List<String> _preview_syllables = new ArrayList<String>();
+  /** The word committed right before the current buffer (bigram context). */
+  private String _context_word = null;
 
   public PinyinInput() {}
 
-  public void started(PinyinSchemes.Scheme scheme, Cdict dict,
-      Suggestions suggestions)
+  public void started(PinyinSchemes.Scheme scheme, Suggestions suggestions)
   {
     _scheme = scheme;
-    _dict = dict;
     _suggestions = suggestions;
     reset();
   }
 
   public boolean is_active() { return _buffer.length() > 0; }
 
-  /** Whether the buffer is waiting for a final (韵母) key, i.e. the last
-      keystroke was an initial with no final yet. The ';' key ("ing") is only
-      a valid pinyin keystroke in this state. */
+  public String get_buffer() { return _buffer.toString(); }
+
+  /** The pinyin preview shown in the candidates bar, e.g. "ni'hao". */
+  public String get_pinyin_string()
+  {
+    if (_preview.isEmpty())
+    {
+      // Not decoded yet (e.g. right after a keystroke in double pinyin):
+      // show the raw buffer so the user always sees something.
+      return _buffer.toString();
+    }
+    return _preview;
+  }
+
+  public List<Candidate> get_candidates()
+  {
+    if (_candidates == null)
+      return new ArrayList<Candidate>();
+    return _candidates;
+  }
+
+  /** Whether the buffer is waiting for a final (韵母) key: the last
+      keystroke was an initial with no final yet. Only meaningful in double
+      pinyin. The ';' key ("ing") is only a valid pinyin keystroke in this
+      state. */
   public boolean pending_final()
   {
+    if (_scheme == null)
+      return false;
     // In double pinyin every syllable is 2 keys; an odd-length buffer means
     // a final is pending.
     return (_buffer.length() % 2) == 1;
   }
 
-  public String get_buffer() { return _buffer.toString(); }
-
-  /** The decoded syllables as a space-separated pinyin string, e.g. "ni hao". */
-  public String get_pinyin_string()
-  {
-    if (_syllables.isEmpty()) return "";
-    StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < _syllables.size(); i++)
-    {
-      if (i > 0) sb.append(' ');
-      sb.append(_syllables.get(i));
-    }
-    return sb.toString();
-  }
-
-  /** The decoded syllables joined with apostrophe, e.g. "ni'hao".
-      Used as the dictionary lookup key. */
-  public String get_pinyin_key()
-  {
-    if (_syllables.isEmpty()) return "";
-    StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < _syllables.size(); i++)
-      sb.append(_syllables.get(i));
-    return sb.toString();
-  }
-
   public boolean key_typed(char c)
   {
     c = Character.toLowerCase(c);
-    // Accept letters and ';' (the "ing" final in Microsoft double pinyin).
-    if (!Character.isLetter(c) && c != ';') return false;
+    // Accept letters, and ';' as the "ing" final in Microsoft double pinyin.
+    if (!Character.isLetter(c) && c != ';')
+      return false;
+    if (_scheme == null && c == ';')
+      return false;
     _buffer.append(c);
-    decode_syllables();
+    _letters = translate();
     return true;
   }
 
   public boolean backspace()
   {
-    if (_buffer.length() == 0) return false;
+    if (_buffer.length() == 0)
+      return false;
     _buffer.deleteCharAt(_buffer.length() - 1);
-    decode_syllables();
+    _letters = translate();
     return true;
   }
 
   public void reset()
   {
     _buffer.setLength(0);
-    _syllables.clear();
+    _letters = "";
+    _candidates = null;
+    _preview = "";
+    _preview_syllables.clear();
+    // Keep [_context_word]: it still describes what precedes the cursor.
   }
 
   public void query_candidates()
+  {
+    if (_letters.isEmpty())
+    {
+      _candidates = new ArrayList<Candidate>();
+      _preview = "";
+      _preview_syllables.clear();
+      publish();
+      return;
+    }
+    List<PinyinEngine.Candidate> decoded = PinyinEngine.decode(
+        PinyinData.get(), _letters, _context_word, PinyinUserDict.counts());
+    List<Candidate> candidates = new ArrayList<Candidate>();
+    for (PinyinEngine.Candidate d : decoded)
+      candidates.add(new Candidate(d.text,
+            keys_for_letters(d.letters_consumed)));
+    _candidates = candidates;
+    compute_preview();
+    publish();
+  }
+
+  /** Accept a candidate by text (the candidate bar passes the tapped text).
+      Returns the number of keystrokes consumed, or -1 if the text is not a
+      current candidate. */
+  public int accept_candidate(String text)
+  {
+    if (_candidates == null)
+      return -1;
+    for (Candidate c : _candidates)
+    {
+      if (c.text.equals(text))
+      {
+        _buffer.delete(0, Math.min(c.keys_consumed, _buffer.length()));
+        _context_word = last_word_of(text);
+        _letters = translate();
+        _candidates = null;
+        return c.keys_consumed;
+      }
+    }
+    return -1;
+  }
+
+  /** The text to show as the editor's composing region: the best candidate
+      if available, otherwise the pinyin preview. */
+  public String composing_text()
+  {
+    List<Candidate> cs = get_candidates();
+    if (!cs.isEmpty())
+      return cs.get(0).text;
+    return get_pinyin_string();
+  }
+
+  public Suggestions suggestions() { return _suggestions; }
+
+  /** Publish the current candidates to the suggestions bar. */
+  private void publish()
   {
     if (_suggestions != null)
       _suggestions.pinyin_query(this);
   }
 
-  public Cdict get_dict() { return _dict; }
-  public List<String> get_syllables() { return _syllables; }
-
-  /** Accept a candidate word. Removes the syllables that were consumed by
-      this candidate from the buffer, keeping any remaining syllables for
-      continued input. Returns true if the buffer still has content after
-      accepting. */
-  public boolean accept_candidate(String candidate, String pinyin_preview)
+  /** Compute the pinyin preview from the best candidate's syllables. */
+  private void compute_preview()
   {
-    // If the candidate is the pinyin preview itself, commit the raw pinyin
-    // and clear everything.
-    if (candidate.equals(pinyin_preview))
+    _preview = "";
+    _preview_syllables.clear();
+    if (_letters.isEmpty())
+      return;
+    // Re-derive the syllable split of the best path from the engine via a
+    // lightweight greedy segmentation of the letters (for display only).
+    int consumed = 0;
+    if (_candidates != null && !_candidates.isEmpty())
     {
-      reset();
-      return false;
+      // consumed keys -> letters via the same mapping used for accepts
+      int best = _candidates.get(0).keys_consumed;
+      consumed = letters_for_keys(best);
     }
-    // Try to determine how many syllables this candidate consumes by
-    // looking it up in the built-in dictionary.
-    int consumed_syllables = count_matching_syllables(candidate);
-    if (consumed_syllables <= 0)
-      consumed_syllables = _syllables.size();
-    // Remove consumed keystrokes from the buffer (2 keys per syllable in
-    // double pinyin)
-    int keys_to_remove = Math.min(consumed_syllables * 2, _buffer.length());
-    _buffer.delete(0, keys_to_remove);
-    decode_syllables();
-    return _buffer.length() > 0;
-  }
-
-  /** Count how many syllables from the current buffer match the candidate
-      word by looking it up in the built-in dictionary. */
-  private int count_matching_syllables(String candidate)
-  {
-    PinyinDict builtin = PinyinDict.built_in();
-    String pinyin_key = get_pinyin_key();
-    List<PinyinDict.Entry> results = builtin.query(pinyin_key,
-        _syllables.size());
-    for (PinyinDict.Entry e : results)
-    {
-      if (e.word.equals(candidate))
-      {
-        // Count how many syllables this pinyin entry spans
-        int count = 0;
-        int pos = 0;
-        for (String s : _syllables)
-        {
-          if (pos + s.length() <= e.pinyin.length())
-          {
-            pos += s.length();
-            count++;
-          }
-          else
-            break;
-        }
-        return count > 0 ? count : _syllables.size();
-      }
-    }
-    // Not found in dict — assume it consumes all syllables
-    return _syllables.size();
-  }
-
-  /**
-   * Decode the raw buffer into syllables using the double pinyin scheme.
-   * In double pinyin, every two keystrokes form one syllable.
-   * An odd trailing keystroke is a pending initial (no final yet).
-   */
-  private void decode_syllables()
-  {
-    _syllables.clear();
-    if (_scheme == null) return;
-    String buf = _buffer.toString();
-    int len = buf.length();
+    else
+      consumed = _letters.length();
+    String complete = _letters.substring(0,
+        Math.min(consumed, _letters.length()));
+    StringBuilder py = new StringBuilder();
     int i = 0;
-    while (i < len)
+    while (i < complete.length())
     {
-      if (i + 1 < len)
+      int len = max_syllable_at(complete, i);
+      if (len == 0)
+        len = 1;
+      if (py.length() > 0)
+        py.append(_scheme == null ? "'" : " ");
+      py.append(complete.substring(i, i + len));
+      i += len;
+    }
+    if (i < _letters.length())
+    {
+      if (py.length() > 0)
+        py.append(_scheme == null ? "'" : " ");
+      py.append(_letters.substring(i));
+    }
+    _preview = py.toString();
+  }
+
+  /** Length of the longest valid syllable starting at [i] in [s], using
+      dictionary knowledge: a span is a syllable when the dictionary has
+      entries whose pinyin start with it — approximate with a prefix query
+      cap. 0 when not even a 1-letter prefix exists. */
+  private static int max_syllable_at(String s, int i)
+  {
+    // Split the letters into syllables with a greedy longest-match against
+    // the standard syllable table embedded in the dictionary: try lengths
+    // from longest to shortest and pick the first that is a known syllable.
+    for (int len = Math.min(PinyinEngine.MAX_SYLLABLE_LEN, s.length() - i);
+        len >= 1; len--)
+    {
+      if (PinyinSyllables.is_syllable(s.substring(i, i + len)))
+        return len;
+    }
+    return 0;
+  }
+
+  /** Translate the buffer into pinyin letters for the engine. */
+  private String translate()
+  {
+    if (_scheme == null)
+      return _buffer.toString();
+    // Double pinyin: decode 2-key syllables; an odd trailing keystroke
+    // contributes its initial letters.
+    StringBuilder out = new StringBuilder();
+    String buf = _buffer.toString();
+    int i = 0;
+    while (i < buf.length())
+    {
+      if (i + 1 < buf.length())
       {
         char init_key = buf.charAt(i);
         char final_key = buf.charAt(i + 1);
@@ -190,20 +271,80 @@ public final class PinyinInput
         String fin = _scheme.finals(final_key, init);
         if (init == null || fin == null)
         {
-          _syllables.add(String.valueOf(init_key));
+          // Invalid pair: emit the initial only and resync on the next key.
+          out.append(init != null ? init : String.valueOf(init_key));
           i += 1;
           continue;
         }
-        _syllables.add(init + fin);
+        out.append(init).append(fin);
         i += 2;
       }
       else
       {
         char init_key = buf.charAt(i);
         String init = _scheme.initial(init_key);
-        _syllables.add(init != null ? init : String.valueOf(init_key));
+        out.append(init != null ? init : String.valueOf(init_key));
         i += 1;
       }
     }
+    return out.toString();
+  }
+
+  /** Map engine letters back to buffer keystrokes: full pinyin is 1:1;
+      double pinyin consumes 2 keystrokes per syllable. */
+  private int keys_for_letters(int letters_consumed)
+  {
+    if (_scheme == null)
+      return Math.min(letters_consumed, _buffer.length());
+    int syllables = count_syllables(_letters, letters_consumed);
+    return Math.min(syllables * 2, _buffer.length());
+  }
+
+  private int letters_for_keys(int keys_consumed)
+  {
+    if (_scheme == null)
+      return Math.min(keys_consumed, _letters.length());
+    // Each syllable is 2 keys; find how many letters the first N syllables
+    // span.
+    int syllables = (keys_consumed + 1) / 2;
+    int pos = 0;
+    int i = 0;
+    while (i < _letters.length() && syllables > 0)
+    {
+      int len = max_syllable_at(_letters, i);
+      if (len == 0)
+        len = 1;
+      i += len;
+      pos = i;
+      syllables--;
+    }
+    return pos;
+  }
+
+  /** Number of syllables in the first [upto] letters of [letters]. */
+  private static int count_syllables(String letters, int upto)
+  {
+    int count = 0;
+    int i = 0;
+    while (i < letters.length() && i < upto)
+    {
+      int len = PinyinSyllables.max_syllable(letters, i);
+      if (len == 0)
+        len = 1;
+      i += len;
+      count++;
+    }
+    return count;
+  }
+
+  /** For the bigram context: the last committed word is the tail of a
+      sentence candidate. */
+  private static String last_word_of(String text)
+  {
+    // A committed candidate may itself be a multi-word sentence; without
+    // segmentation knowledge, use the whole text as context — the engine's
+    // context lookup uses the dictionary word id, and compound strings
+    // simply won't match (neutral context).
+    return text.length() <= 8 ? text : null;
   }
 }

@@ -54,6 +54,15 @@ public final class PinyinUserDict
     return (c != null) ? c : 0;
   }
 
+  /** The live word -> usage count map for the engine (never null). The
+      engine reads it on every query; it must not be modified by callers. */
+  public static java.util.Map<String, Integer> counts()
+  {
+    if (_counts == null)
+      _counts = new HashMap<String, Integer>();
+    return _counts;
+  }
+
   /** Record that the user committed [word]. */
   public static void record(String word)
   {

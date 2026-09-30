@@ -38,6 +38,9 @@
     <string name="pref_suggestions_summary">Enable word completion and spell checking</string>
     <string name="pref_space_bar_auto_complete_title">Autocomplete with the space bar</string>
     <string name="pref_space_bar_auto_complete_summary">Enter the best suggestion by pressing space</string>
+    <string name="pref_pinyin_scheme_title">Pinyin input scheme</string>
+    <string name="pref_pinyin_scheme_full">Full pinyin (全拼)</string>
+    <string name="pref_pinyin_scheme_double">Microsoft double pinyin (微软双拼)</string>
     <string name="pref_category_typing">Typing</string>
     <string name="pref_swipe_dist_title">Swiping distance</string>
     <string name="pref_swipe_dist_summary">Distance of characters in the corners of the keys (%s)</string>
@@ -166,7 +169,7 @@
     <string name="pref_physical_keyboard_behavior_hide">Hide everything</string>
     <string name="pref_physical_keyboard_behavior_show">Show everything</string>
     <string name="pref_keyevent_compat_title">Key event compatibility mode</string>
-    <string name="pref_keyevent_compat_summary">Send key events without soft-keyboard flags and with a physical device id. Enable if shortcuts (Ctrl+C, Win, etc.) do not work in remote desktop apps (UU Remote, ToDesk, Sunlogin).</string>
+    <string name="pref_keyevent_compat_summary">Send shortcut keys (Ctrl, Alt, Win and their combos) like a physical keyboard so remote desktop apps (UU Remote, ToDesk, Sunlogin) forward them. Enter, Backspace and other plain keys are not affected.</string>
     <string name="pref_split_layout">Split layout</string>
     <string name="pref_split_layout_never">Never</string>
     <string name="pref_split_layout_landscape">In landscape orientation</string>

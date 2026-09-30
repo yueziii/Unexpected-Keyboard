@@ -2,7 +2,6 @@ package juloo.keyboard2;
 
 import juloo.keyboard2.pinyin.PinyinSchemes;
 import juloo.keyboard2.pinyin.PinyinSchemes.Scheme;
-import juloo.keyboard2.pinyin.PinyinDict;
 import java.util.List;
 import org.junit.Test;
 import org.junit.Before;
@@ -38,7 +37,7 @@ public class PinyinTest
   Scheme _scheme;
 
   @Before
-  public void setUp() { _scheme = PinyinSchemes.get(0); }
+  public void setUp() { _scheme = PinyinSchemes.get(1); }
 
   // --- Initial (声母) tests ---
 
@@ -551,55 +550,4 @@ public class PinyinTest
 
   @Test
   public void test_scheme_name() { assertEquals("Microsoft", _scheme.name()); }
-
-  // --- Built-in dict tests ---
-
-  @Test
-  public void test_built_in_dict_single_char()
-  {
-    List<PinyinDict.Entry> r = PinyinDict.built_in().query("ni", 3);
-    assertFalse(r.isEmpty());
-    assertEquals("你", r.get(0).word);
-  }
-
-  @Test
-  public void test_built_in_dict_multi_char()
-  {
-    List<PinyinDict.Entry> r = PinyinDict.built_in().query("nihao", 3);
-    assertFalse(r.isEmpty());
-    assertEquals("你好", r.get(0).word);
-  }
-
-  @Test
-  public void test_built_in_dict_cou()
-  {
-    List<PinyinDict.Entry> r = PinyinDict.built_in().query("cou", 3);
-    assertFalse(r.isEmpty());
-    assertEquals("凑", r.get(0).word);
-  }
-
-  @Test
-  public void test_built_in_dict_ing_chars()
-  {
-    // Verify 'ing' characters are in the dict
-    List<PinyinDict.Entry> r = PinyinDict.built_in().query("xing", 3);
-    assertFalse(r.isEmpty());
-    assertEquals("行", r.get(0).word);
-
-    r = PinyinDict.built_in().query("ming", 3);
-    assertFalse(r.isEmpty());
-    assertEquals("明", r.get(0).word);
-
-    r = PinyinDict.built_in().query("qing", 3);
-    assertFalse(r.isEmpty());
-    // Both 情 and 清 are common; just verify a valid candidate is returned
-    assertTrue(r.get(0).word.equals("情") || r.get(0).word.equals("清"));
-  }
-
-  @Test
-  public void test_built_in_dict_no_match()
-  {
-    List<PinyinDict.Entry> r = PinyinDict.built_in().query("zzzz", 3);
-    assertTrue(r.isEmpty());
-  }
 }

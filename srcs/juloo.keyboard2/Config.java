@@ -77,11 +77,14 @@ public final class Config
   public int clipboard_history_duration;
   public boolean space_bar_auto_complete;
   public boolean physical_keyboard_hide;
-  /** Compatibility mode for apps that do not forward key events from soft
- keyboards (e.g. UU Remote, ToDesk, Sunlogin). When enabled, key events are
- sent without FLAG_SOFT_KEYBOARD and with a non-virtual device id (0) so
- they are more likely to be treated as physical keyboard events.
- Defaults to off because it changes behavior system-wide. */
+  /** Compatibility mode for remote desktop apps (e.g. UU Remote, ToDesk,
+      Sunlogin). When enabled, key events that involve Ctrl, Alt or Meta are
+      sent without FLAG_SOFT_KEYBOARD and with the device id of a real
+      keyboard plus a scancode, so they are forwarded like physical keyboard
+      input. Plain keys (Enter, Backspace, ...) keep the soft-keyboard
+      channel, as these apps already forward them through their editor's
+      text handling. Defaults to off because it changes behavior
+      system-wide. */
   public boolean keyevent_compat = false;
 
   // Dynamically set
@@ -96,8 +99,8 @@ public final class Config
   public Cdict emoji_dictionary = null; // Might be 'null'.
   // Pinyin input mode
   public boolean pinyin_enabled = false;
-  public int pinyin_scheme = 0; // 0=Microsoft, reserved for future schemes
-  public Cdict pinyin_dictionary = null; // Might be 'null'.
+  /** 0 = full pinyin (全拼), 1 = Microsoft double pinyin (微软双拼). */
+  public int pinyin_scheme = 0;
   /** When true, the user has manually toggled pinyin mode via the
       switch_lang key. [refresh_current_dictionary] must not override
       [pinyin_enabled] in that case; only a real subtype change resets it. */
@@ -180,6 +183,9 @@ public final class Config
     add_number_row = !number_row.equals("no_number_row");
     number_row_symbols = number_row.equals("symbols");
     suggestions_enabled = _prefs.getBoolean("suggestions", true);
+    // 0 = full pinyin (全拼), 1 = Microsoft double pinyin (微软双拼)
+    pinyin_scheme = _prefs.getString("pinyin_scheme", "full").equals("double")
+      ? 1 : 0;
     // The baseline for the swipe distance correspond to approximately the
     // width of a key in portrait mode, as most layouts have 10 columns.
     // Multipled by the DPI ratio because most swipes are made in the diagonals.

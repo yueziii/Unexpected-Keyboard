@@ -26,19 +26,25 @@ DEFAULT_MULTI_LIMIT = 90000
 
 def strip_tones(p):
     n = unicodedata.normalize('NFD', p)
+    # ü is 'u' + combining diaeresis after NFD; map it to 'v' before the
+    # diacritics are stripped, so 绿 is indexed as "lv" (and 女 as "nv"),
+    # matching what users type.
+    n = n.replace('u\u0308', 'v')
     n = ''.join(c for c in n if unicodedata.category(c) != 'Mn')
-    return n.lower().replace('ü', 'v')
+    return n.lower()
 
 def is_han(word):
     return all(0x4e00 <= ord(c) <= 0x9fff for c in word)
 
 def normalize_freq(freq, max_freq):
-    """Log-normalize a raw frequency onto [0, FREQ_SCALE]. The logarithm
-    compresses the huge dynamic range so that words from corpora with
-    different scales can be compared, while preserving the ordering."""
+    """Linearly normalize a raw frequency onto [0, FREQ_SCALE]. A linear
+    scale preserves the orders of magnitude between common and rare words
+    (log-compression made nearly all words look equally frequent, which
+    broke sentence disambiguation). Words seen by several corpora get the
+    maximum of their normalized scores."""
     if freq <= 0:
         return 0
-    return int(round(FREQ_SCALE * math.log1p(freq) / math.log1p(max_freq)))
+    return int(round(FREQ_SCALE * float(freq) / max_freq))
 
 def load_opencc(path):
     d = {}
@@ -94,6 +100,22 @@ class Corpora:
                                 pinyins.append(p)
                         char_pinyin[chr(cp)] = pinyins
         return char_pinyin
+
+    def standard_chars(self):
+        """The 8105 characters of the 通用规范汉字表 (2013): the simplified
+        characters people actually type. Traditional variants and rare
+        characters (錫, 浠) share pinyins with common ones but must not
+        outrank them in the candidate list."""
+        chars = set()
+        with codecs.open(self.path('pinyin-data', 'kMandarin_8105.txt'),
+                         'r', 'utf-8') as f:
+            for line in f:
+                m = re.match(r'U\+([0-9A-Fa-f]+):', line)
+                if m:
+                    cp = int(m.group(1), 16)
+                    if 0x3400 <= cp <= 0x9fff:
+                        chars.add(chr(cp))
+        return chars
 
     # ---- phrase-pinyin-data: annotated word pinyin ----
     def phrase_pinyin(self, trad_to_simp):
@@ -166,6 +188,7 @@ class Corpora:
                     essay_freq[simp] = freq
 
         jieba_freq = {}
+        jieba_geo_chars = set()
         with codecs.open(self.path('jieba', 'jieba/dict.txt'), 'r', 'utf-8') as f:
             for line in f:
                 parts = line.strip().split(' ')
@@ -180,6 +203,12 @@ class Corpora:
                     continue
                 if word not in jieba_freq or freq > jieba_freq[word]:
                     jieba_freq[word] = freq
+                if len(word) == 1 and len(parts) >= 3 and parts[2] == 'g':
+                    # Geographic names (浠 from 浠水县 gazetteers): chars
+                    # that are almost never typed standalone but carry huge
+                    # raw counts. They must not rank high as single-char
+                    # candidates.
+                    jieba_geo_chars.add(word)
 
         thuocl_freq = {}
         thuocl_dir = os.path.join(self.data_dir, 'THUOCL', 'data')
@@ -202,7 +231,7 @@ class Corpora:
                         if word not in thuocl_freq or freq > thuocl_freq[word]:
                             thuocl_freq[word] = freq
 
-        return essay_freq, jieba_freq, thuocl_freq
+        return essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -210,7 +239,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--data-dir', default=os.path.join(script_dir, 'data'),
                     help='Directory containing the cloned corpora')
-    ap.add_argument('--output', default=os.path.join(repo_dir, 'assets', 'pinyin_dict.txt'))
+    ap.add_argument('--output',
+                    default=os.path.join(script_dir, 'data', 'pinyin_dict.txt'),
+                    help='Intermediate text dictionary, consumed by gen_pinyin_bin.py')
     ap.add_argument('--multi-limit', type=int, default=DEFAULT_MULTI_LIMIT,
                     help='Maximum number of multi-character word entries')
     args = ap.parse_args()
@@ -218,9 +249,11 @@ def main():
     corpora = Corpora(args.data_dir)
     trad_to_simp = corpora.opencc()
     char_pinyin = corpora.char_pinyin()
+    standard = corpora.standard_chars()
     phrase_pinyin = corpora.phrase_pinyin(trad_to_simp)
     luna_pinyin = corpora.luna_pinyin(trad_to_simp)
-    essay_freq, jieba_freq, thuocl_freq = corpora.word_freqs(trad_to_simp)
+    essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars = \
+        corpora.word_freqs(trad_to_simp)
 
     # Map from simplified words back to their traditional spellings, used to
     # look words up in the luna-pinyin word list (traditional script).
@@ -245,6 +278,17 @@ def main():
             normalize_freq(thuocl_freq.get(word, 0), maxes['thuocl']),
         )
 
+    # Frequency for single characters. THUOCL is a set of domain word
+    # lists; its place-name list gives obscure geographic characters
+    # (浠, 亳, 邳) frequencies far above their real typing rate, so it is
+    # excluded for characters. Words keep the full merge.
+    def merged_freq_char(word):
+        jieba = 0 if word in jieba_geo_chars else jieba_freq.get(word, 0)
+        return max(
+            normalize_freq(essay_freq.get(word, 0), maxes['essay']),
+            normalize_freq(jieba, maxes['jieba']),
+        )
+
     # simp_to_trad is built above, before this function is ever called.
     def get_word_pinyins(word):
         pinyins = set()
@@ -263,15 +307,25 @@ def main():
 
     entries = {}  # (pinyin, word) → freq
 
-    # Single characters: every reading of every character.
+    # Single characters: every reading of every character. pinyin-data
+    # orders readings most-common-first; later readings (historical or
+    # literary, e.g. 是 tí, 她 jiě) must not compete with the reading people
+    # actually type, so they get a heavily reduced frequency. Common
+    # polyphones (了 le/liao, 行 xing/hang) keep a usable tail entry.
+    # Characters outside the 通用规范汉字表 (traditional variants, rare
+    # characters) are demoted so they never outrank standard ones.
     for char, pinyins in char_pinyin.items():
-        freq = merged_freq(char)
+        freq = merged_freq_char(char)
         if freq == 0:
             freq = 500  # unseen but valid characters stay at the tail
-        for py in pinyins:
+        if char not in standard:
+            freq = max(freq // 10, 50)
+        for idx, py in enumerate(pinyins):
+            tail = 100 if char in standard else 10
+            f = freq if idx == 0 else max(freq // 200, tail)
             key = (py, char)
-            if key not in entries or freq > entries[key]:
-                entries[key] = freq
+            if key not in entries or f > entries[key]:
+                entries[key] = f
 
     # Multi-character words: the most frequent ones from the merged corpus.
     multi_words = set(essay_freq) | set(jieba_freq) | set(thuocl_freq)

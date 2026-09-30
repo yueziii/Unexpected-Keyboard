@@ -1,16 +1,12 @@
 package juloo.keyboard2.suggestions;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 import juloo.cdict.Cdict;
-import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.Config;
 import juloo.keyboard2.ComposeKey;
 import juloo.keyboard2.ComposeKeyData;
 import juloo.keyboard2.pinyin.PinyinInput;
-import juloo.keyboard2.pinyin.PinyinDict;
-import juloo.keyboard2.pinyin.PinyinUserDict;
 
 /** Keep track of the word being typed and provide suggestions for
     [CandidatesView].
@@ -76,71 +72,24 @@ public final class Suggestions
     _callback.set_suggestions(this);
   }
 
-  /** Called by [PinyinInput] when the pinyin buffer changes. Populates
-      [pinyin_candidates] with as many dictionary matches as available (up to
-      [PINYIN_MAX_COUNT]) and exposes the decoded pinyin via
-      [pinyin_preview].
+  /** Called by [PinyinInput] after a decode pass. Copies the engine's
+      ranked candidates into [pinyin_candidates] for the candidates bar and
+      exposes the decoded pinyin via [pinyin_preview].
 
-      Unlike the previous implementation, the preview no longer occupies the
-      first candidate slot — it is rendered as a separate label. This frees
-      all candidate slots for actual words/characters, which is essential
-      because a single pinyin syllable can map to dozens of characters. */
+      The pinyin engine manages its own dictionaries (PinyinData); the
+      English [Cdict] is never consulted for Chinese candidates. */
   public void pinyin_query(PinyinInput pinyin)
   {
     // In pinyin mode, candidates must ALWAYS be shown regardless of the
     // _enabled flag (which follows the editor's suggestion flag). The user
     // needs to see pinyin candidates to type Chinese.
-    List<String> syllables = pinyin.get_syllables();
-    if (syllables.isEmpty())
-    {
-      clear();
-      return;
-    }
-    pinyin_preview = pinyin.get_pinyin_string();
-    // Build concatenated pinyin for dictionary lookup
-    StringBuilder query = new StringBuilder();
-    for (String s : syllables)
-      query.append(s);
-    String word = query.toString();
-
-    List<String> candidates = new ArrayList<String>();
-    Cdict dict = pinyin.get_dict();
-    if (dict != null)
-    {
-      Cdict.Result r = dict.find(word);
-      if (r.found)
-        candidates.add(dict.word(r.index));
-      int[] suffixes = dict.suffixes(r, PINYIN_MAX_COUNT);
-      for (int j = 0; j < suffixes.length
-          && candidates.size() < PINYIN_MAX_COUNT; j++)
-        candidates.add(dict.word(suffixes[j]));
-      if (candidates.size() < PINYIN_MAX_COUNT && word.length() >= 3)
-      {
-        int[] dist = dict.distance(word, 1,
-            PINYIN_MAX_COUNT - candidates.size());
-        for (int j = 0; j < dist.length
-            && candidates.size() < PINYIN_MAX_COUNT; j++)
-          candidates.add(dict.word(dist[j]));
-      }
-    }
-    // Fall back to built-in PinyinDict
-    if (candidates.isEmpty())
-    {
-      PinyinDict builtin = PinyinDict.built_in();
-      List<PinyinDict.Entry> results = builtin.query(word, PINYIN_MAX_COUNT);
-      for (PinyinDict.Entry e : results)
-      {
-        if (candidates.size() >= PINYIN_MAX_COUNT)
-          break;
-        candidates.add(e.word);
-      }
-    }
-    // Words the user committed before are promoted to the front, most used
-    // first, so personal usage habits win over raw dictionary frequencies.
-    PinyinUserDict.rank_by_user_usage(candidates);
-
+    pinyin_preview = pinyin.is_active() ? pinyin.get_pinyin_string() : null;
     pinyin_candidates.clear();
-    pinyin_candidates.addAll(candidates);
+    if (pinyin.is_active())
+    {
+      for (PinyinInput.Candidate c : pinyin.get_candidates())
+        pinyin_candidates.add(c.text);
+    }
     // Keep the legacy array empty in pinyin mode; the CandidatesView reads
     // [pinyin_candidates] / [pinyin_preview] instead.
     count = 0;

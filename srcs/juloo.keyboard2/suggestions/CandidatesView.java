@@ -144,13 +144,17 @@ public class CandidatesView extends LinearLayout
       _pinyin_candidates_container.addView(v);
       _pinyin_views.add(v);
     }
-    // Populate / show the first [n] views, hide the rest.
+    // Populate / show the first [n] views, hide the rest. The first
+    // candidate (what space commits) is bold, like mainstream IMEs.
     for (int i = 0; i < _pinyin_views.size(); i++)
     {
       TextView v = _pinyin_views.get(i);
       if (i < n)
       {
         v.setText(s.pinyin_candidates.get(i));
+        v.setTypeface(null,
+            i == 0 ? android.graphics.Typeface.BOLD
+              : android.graphics.Typeface.NORMAL);
         v.setVisibility(View.VISIBLE);
       }
       else
