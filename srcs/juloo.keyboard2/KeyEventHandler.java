@@ -123,6 +123,18 @@ public final class KeyEventHandler
     }
   }
 
+  /** The pinyin scheme setting changed while the input view is live: flush
+      the buffer and re-initialize the state machine with the new scheme.
+      ([started()] only runs when an editor regains focus, so a scheme
+      change would otherwise never reach the active [PinyinInput].) */
+  public void pinyin_config_changed(Config conf)
+  {
+    if (_pinyin == null)
+      return;
+    flush_pinyin();
+    _pinyin.started(pinyin_scheme(conf), _suggestions);
+  }
+
   /** Selection has been updated. */
   public void selection_updated(int oldSelStart, int newSelStart, int newSelEnd)
   {

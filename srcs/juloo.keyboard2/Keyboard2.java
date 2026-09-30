@@ -263,6 +263,8 @@ public class Keyboard2 extends InputMethodService
     refresh_current_dictionary();
     // Update key event compat mode so it takes effect immediately
     _keyeventhandler._keyevent_compat = _config.keyevent_compat;
+    // Re-initialize the pinyin state machine if the scheme setting changed
+    _keyeventhandler.pinyin_config_changed(_config);
     // Refreshing the theme config requires re-creating the views
     if (prev_theme != _config.theme)
     {
