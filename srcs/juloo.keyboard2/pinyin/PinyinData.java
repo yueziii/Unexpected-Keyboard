@@ -2,6 +2,7 @@ package juloo.keyboard2.pinyin;
 
 import android.content.Context;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -46,21 +47,67 @@ public final class PinyinData
 
   private static PinyinData _instance = null;
 
-  /** Pre-load from assets. Call once at IME startup. Safe to call twice. */
+  /** Pre-load the dictionary. Call once at IME startup. Safe to call twice. */
   public static void init(Context ctx)
   {
     if (_instance != null)
       return;
+    _instance = load(ctx);
+  }
+
+  /** Swap in whatever dictionary is currently installed on disk. Called
+      after PinyinDictManager installs or removes a pack, without restarting
+      the input method. */
+  public static void reload(Context ctx)
+  {
+    _instance = load(ctx);
+  }
+
+  /** Loading order: a dictionary pack installed by PinyinDictManager, then
+      the bundled assets, then the tiny built-in fallback. Never returns
+      null. Invalid files are skipped, never trusted. */
+  private static PinyinData load(Context ctx)
+  {
     if (ctx != null)
     {
-      PinyinData d = load_from_assets(ctx);
+      PinyinData d = load_installed(ctx);
       if (d != null)
-      {
-        _instance = d;
-        return;
-      }
+        return d;
+      d = load_from_assets(ctx);
+      if (d != null)
+        return d;
     }
-    _instance = new PinyinData(fallback_buffer(), fallback_bigram());
+    return new PinyinData(fallback_buffer(), fallback_bigram());
+  }
+
+  /** Load the dictionary pack installed by PinyinDictManager, if any. */
+  private static PinyinData load_installed(Context ctx)
+  {
+    try
+    {
+      File dir = new File(ctx.getFilesDir(), "pinyin");
+      File dict = new File(dir, "py_dict.bin");
+      File bigram = new File(dir, "py_bigram.bin");
+      if (!dict.isFile() || !bigram.isFile())
+        return null;
+      return new PinyinData(read_file(dict), read_file(bigram));
+    }
+    catch (Exception e)
+    {
+      return null;
+    }
+  }
+
+  private static ByteBuffer read_file(File f) throws IOException
+  {
+    InputStream in = new FileInputStream(f);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    byte[] tmp = new byte[8192];
+    int n;
+    while ((n = in.read(tmp)) > 0)
+      out.write(tmp, 0, n);
+    in.close();
+    return ByteBuffer.wrap(out.toByteArray()).slice();
   }
 
   /** The loaded data. Never null: falls back to a tiny built-in dictionary

@@ -141,4 +141,36 @@ public class PinyinDataTest
         _data.bigram_count(de, shi) > 0);
     assertEquals(0, _data.bigram_count(-1, -1));
   }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void rejects_bad_magic()
+  {
+    // A downloaded file with garbage content must be rejected by the
+    // constructor so the loader can fall back to the bundled dictionary.
+    new PinyinData(ByteBuffer.wrap(new byte[64]), null);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void rejects_bigram_mismatch() throws Exception
+  {
+    // A bigram file whose word table does not match the dictionary's word
+    // count is corrupt (the two must always be a matched pack).
+    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+    out.write(new byte[]{ 'P', 'Y', 'B', '1' });
+    write_int(out, 1); // version
+    write_int(out, _data.word_count() + 1); // wrong n_words
+    write_int(out, 0); // n_pairs
+    write_int(out, 0); // n_distinct_prev
+    new PinyinData(
+        ByteBuffer.wrap(Files.readAllBytes(find_asset("py_dict.bin").toPath())),
+        ByteBuffer.wrap(out.toByteArray()));
+  }
+
+  static void write_int(java.io.ByteArrayOutputStream out, int v)
+  {
+    out.write((v >> 24) & 0xff);
+    out.write((v >> 16) & 0xff);
+    out.write((v >> 8) & 0xff);
+    out.write(v & 0xff);
+  }
 }
