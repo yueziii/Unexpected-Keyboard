@@ -4,8 +4,10 @@ import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
+import android.preference.ListPreference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceManager;
+import juloo.keyboard2.pinyin.cloud.PinyinDictManager;
 
 public class SettingsActivity extends PreferenceActivity
 {
@@ -31,6 +33,9 @@ public class SettingsActivity extends PreferenceActivity
     findPreference("horizontal_margin_landscape_unfolded").setEnabled(foldableDevice);
     findPreference("keyboard_height_unfolded").setEnabled(foldableDevice);
     findPreference("keyboard_height_landscape_unfolded").setEnabled(foldableDevice);
+
+    PinyinDictManager.bind_preference(this,
+        (ListPreference)findPreference("pinyin_dict_pack"));
   }
 
   void fallbackEncrypted()

@@ -41,6 +41,13 @@
     <string name="pref_pinyin_scheme_title">Pinyin input scheme</string>
     <string name="pref_pinyin_scheme_full">Full pinyin (全拼)</string>
     <string name="pref_pinyin_scheme_double">Microsoft double pinyin (微软双拼)</string>
+    <string name="pref_pinyin_dict_pack_title">Pinyin dictionary pack</string>
+    <string name="pinyin_dict_builtin">Built-in dictionary</string>
+    <string name="pinyin_dict_pack_label">%1$s (%2$d entries, %3$s)</string>
+    <string name="pinyin_dict_installing">Downloading dictionary…</string>
+    <string name="pinyin_dict_installed">Dictionary installed: %s</string>
+    <string name="pinyin_dict_install_failed">Dictionary download failed: %s</string>
+    <string name="pinyin_dict_removed">Restored the built-in dictionary</string>
     <string name="pref_category_typing">Typing</string>
     <string name="pref_swipe_dist_title">Swiping distance</string>
     <string name="pref_swipe_dist_summary">Distance of characters in the corners of the keys (%s)</string>

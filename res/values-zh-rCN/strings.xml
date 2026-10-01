@@ -31,6 +31,13 @@
     <string name="pref_pinyin_scheme_title">拼音输入方案</string>
     <string name="pref_pinyin_scheme_full">全拼</string>
     <string name="pref_pinyin_scheme_double">微软双拼</string>
+    <string name="pref_pinyin_dict_pack_title">拼音云端词库</string>
+    <string name="pinyin_dict_builtin">内置词库</string>
+    <string name="pinyin_dict_pack_label">%1$s（%2$d 词条 · %3$s）</string>
+    <string name="pinyin_dict_installing">正在下载词库…</string>
+    <string name="pinyin_dict_installed">词库已启用：%s</string>
+    <string name="pinyin_dict_install_failed">词库下载失败：%s</string>
+    <string name="pinyin_dict_removed">已恢复内置词库</string>
     <string name="pref_category_typing">输入</string>
     <string name="pref_swipe_dist_title">滑动触发距离</string>
     <string name="pref_swipe_dist_summary">输入按键四角的符号需要滑动的距离 (%s)</string>

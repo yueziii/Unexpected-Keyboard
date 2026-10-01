@@ -10,6 +10,9 @@ dependencies {
   implementation("androidx.window:window-java:1.4.0")
   implementation("androidx.core:core:1.16.0") // Version 1.17.0 available with sdk 36
   testImplementation("junit:junit:4.13.2")
+  // The manifest of the cloud dictionaries is parsed with org.json, which
+  // is only a stub in the android.jar used by local unit tests.
+  testImplementation("org.json:json:20240303")
 }
 
 android {
