@@ -1,0 +1,42 @@
+name: Build pinyin dictionaries
+
+on:
+  schedule:
+    # Monthly, on the 1st at 04:00 UTC
+    - cron: '0 4 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dictionaries repository
+        uses: actions/checkout@v4
+
+      - name: Check out the keyboard repository
+        uses: actions/checkout@v4
+        with:
+          repository: yueziii/Unexpected-Keyboard
+          path: keyboard
+
+      - name: Clone the corpora
+        run: keyboard/scripts/download_pinyin_data.sh
+
+      - name: Build the packs and update the manifest
+        run: |
+          python3 keyboard/scripts/make_pinyin_pack.py --out-dir .
+
+      - name: Commit the new packs
+        run: |
+          git config user.name "pinyin-dict-bot"
+          git config user.email "bot@noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed"
+          else
+            git commit -m "Rebuild dictionary packs ($(date -u +%F))"
+            git push
+          fi

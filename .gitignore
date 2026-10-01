@@ -12,4 +12,8 @@
 /_build
 /release
 scripts/data/
+__pycache__/
 .zcode/
+# Binary dictionary packs are large; they live in the separate
+# Unexpected-Keyboard-pinyin-dictionaries repository (see cloud/README).
+cloud/pinyin-dictionaries/packs/
