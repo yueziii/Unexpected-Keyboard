@@ -316,16 +316,21 @@ public class CandidatesView extends LinearLayout
       (ViewGroup.MarginLayoutParams)getLayoutParams();
     p.height = (int)row_height;
     setLayoutParams(p);
-    // Compute the text size the same way the keyboard keys do: take the
-    // minimum of a height-based size and a width-based size. Without the
-    // width constraint, the candidates text becomes unreadably small in
-    // landscape and on large/unfolded screens where the screen height (and
-    // thus the keyboard row height) is much smaller relative to the width.
-    // The width term estimates a key height from the screen width assuming a
-    // 10-column layout with a 3/2 key aspect ratio, matching Keyboard2View.
-    float height_based = row_height;
-    float width_based = (config.screenWidthPixels / 10f
-        - config.key_horizontal_margin * config.screenWidthPixels / 10f)
+    // Compute the text size the same way the keyboard keys do (see
+    // Keyboard2View.onMeasure): take the minimum of a height-based size and
+    // a width-based size. The height term is a key row's usable height —
+    // NOT the (shorter) bar height: scaling the text by the bar's 0.72
+    // factor made the candidates visibly smaller than the key labels. The
+    // width term estimates a key height from the keyboard width assuming a
+    // 10-column layout with a 3/2 key aspect ratio; use the measured width
+    // when available so a floating keyboard narrower than the screen gets
+    // the same labels as its keys.
+    float height_based = config.keyboard_rows_height_pixels
+      * (1 - config.key_vertical_margin);
+    float keyboard_width = getWidth() > 0 ? getWidth()
+      : config.screenWidthPixels;
+    float width_based = (keyboard_width / 10f
+        - config.key_horizontal_margin * keyboard_width / 10f)
       * 3f / 2f;
     float text_size = Math.min(height_based, width_based)
       * config.characterSize * config.labelTextSize;
