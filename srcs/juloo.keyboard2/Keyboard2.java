@@ -251,7 +251,10 @@ public class Keyboard2 extends InputMethodService
       || _config.pinyin_enabled;
     if (should_show)
       _candidates_view.refresh_config(_config);
-    _candidates_view.setVisibility(should_show ? View.VISIBLE : View.GONE);
+    // This is only the config-level gate: whether the bar actually takes
+    // space is decided by its content (CandidatesView hides itself while
+    // empty and reappears with the first candidate).
+    _candidates_view.set_shown(should_show);
   }
 
   /** Might re-create the keyboard view. [_keyboard_layout_view.setKeyboard()] and

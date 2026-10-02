@@ -88,30 +88,33 @@ public class CandidatesView extends LinearLayout
     if (s.pinyin_preview != null || !s.pinyin_candidates.isEmpty())
     {
       show_pinyin(s);
-      return;
     }
-    // English mode path (legacy).
-    hide_pinyin();
-    int s_count = s.count;
-    for (int i = 0; i < Suggestions.MAX_COUNT; i++)
-      _items[i] = (i < s_count) ? s.suggestions[i] : null;
-    _items[3] = s.emoji_suggestion;
-    // Hide the status message when showing candidates.
-    if (s_count != 0 && _status_no_dict != null)
-      _status_no_dict.setVisibility(View.GONE);
-    for (int i = 0; i < _item_views.length; i++)
+    else
     {
-      TextView v = _item_views[i];
-      if (_items[i] != null)
+      // English mode path (legacy).
+      hide_pinyin();
+      int s_count = s.count;
+      for (int i = 0; i < Suggestions.MAX_COUNT; i++)
+        _items[i] = (i < s_count) ? s.suggestions[i] : null;
+      _items[3] = s.emoji_suggestion;
+      // Hide the status message when showing candidates.
+      if (s_count != 0 && _status_no_dict != null)
+        _status_no_dict.setVisibility(View.GONE);
+      for (int i = 0; i < _item_views.length; i++)
       {
-        v.setText(_items[i]);
-        v.setVisibility(View.VISIBLE);
-      }
-      else
-      {
-        v.setVisibility(View.GONE);
+        TextView v = _item_views[i];
+        if (_items[i] != null)
+        {
+          v.setText(_items[i]);
+          v.setVisibility(View.VISIBLE);
+        }
+        else
+        {
+          v.setVisibility(View.GONE);
+        }
       }
     }
+    update_visibility();
   }
 
   /** Render the pinyin preview label and the scrollable candidate strip. */
@@ -181,6 +184,41 @@ public class CandidatesView extends LinearLayout
       _pinyin_scroll.setVisibility(View.GONE);
     for (TextView v : _pinyin_views)
       v.setVisibility(View.GONE);
+  }
+
+  /** Whether the keyboard currently allows the candidates bar at all.
+      Owned by [Keyboard2.refresh_candidates_view], which derives it from the
+      suggestions setting, the editor type and the pinyin state. */
+  boolean _show_allowed = false;
+
+  /** Config-level gate on top of the content check: when disallowed the bar
+      stays hidden even if content is set. */
+  public void set_shown(boolean shown)
+  {
+    _show_allowed = shown;
+    update_visibility();
+  }
+
+  /** Hide the bar entirely when it has nothing to display — an empty bar
+      would otherwise sit between the app and the keyboard taking a row of
+      height. The container is bottom-anchored, so when the first candidate
+      brings the bar back the keyboard keys themselves never move; only the
+      app content above shifts, once per composition. */
+  void update_visibility()
+  {
+    boolean has_content =
+      (_status_no_dict != null
+        && _status_no_dict.getVisibility() == View.VISIBLE)
+      || (_pinyin_preview_view != null
+        && _pinyin_preview_view.getVisibility() == View.VISIBLE)
+      || (_pinyin_scroll != null
+        && _pinyin_scroll.getVisibility() == View.VISIBLE);
+    for (int i = 0; !has_content && i < _item_views.length; i++)
+      has_content = _item_views[i].getVisibility() == View.VISIBLE;
+    int visibility = (_show_allowed && has_content)
+      ? View.VISIBLE : View.GONE;
+    if (visibility != getVisibility())
+      setVisibility(visibility);
   }
 
   /** Create a TextView for a pinyin candidate, styled like the English
@@ -263,6 +301,7 @@ public class CandidatesView extends LinearLayout
     else if (_status_no_dict != null)
       _status_no_dict.setVisibility(View.GONE);
     set_sizes(config);
+    update_visibility();
   }
 
   /** Set the height of the suggestion row and the text size. Public because
