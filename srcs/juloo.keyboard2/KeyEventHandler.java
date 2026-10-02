@@ -290,16 +290,19 @@ public final class KeyEventHandler
         break;
       case Modifier: break;
       case Editing:
-        // In pinyin mode, BACKSPACE and DELETE_WORD should edit the pinyin
-        // buffer directly rather than flushing (committing) it first.
-        // Flushing before backspace was the bug: it committed the entire
+        // In pinyin mode, BACKSPACE, DELETE_WORD and SPACE_BAR act on the
+        // pinyin buffer directly rather than flushing (committing) it first.
+        // Flushing first was the bug for backspace: it committed the entire
         // pinyin string to the editor, then deleted only one character,
-        // leaving the rest "上屏" (committed on screen).
+        // leaving the rest "上屏" (committed on screen). For space it made
+        // handle_space_bar see an inactive buffer and type a literal space
+        // on top of the committed candidate.
         if (_pinyin != null && _pinyin.is_active())
         {
           KeyValue.Editing ed = key.getEditing();
           if (ed == KeyValue.Editing.BACKSPACE
-              || ed == KeyValue.Editing.DELETE_WORD)
+              || ed == KeyValue.Editing.DELETE_WORD
+              || ed == KeyValue.Editing.SPACE_BAR)
           {
             handle_editing_key(ed);
             break;
