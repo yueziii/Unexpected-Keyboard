@@ -39,6 +39,8 @@ public final class PinyinInput
   /** Null for full pinyin; the scheme tables for double pinyin. */
   private PinyinSchemes.Scheme _scheme;
   private Suggestions _suggestions;
+  /** Whether 简拼 (abbreviated pinyin) candidates are enabled. */
+  private boolean _abbrev;
 
   /** Raw keystroke buffer (lowercase letters and ';' in double pinyin). */
   private StringBuilder _buffer = new StringBuilder();
@@ -53,13 +55,18 @@ public final class PinyinInput
   private List<String> _preview_syllables = new ArrayList<String>();
   /** The word committed right before the current buffer (bigram context). */
   private String _context_word = null;
+  /** The pinyin letters consumed by the last accepted candidate (for
+      user-word learning); empty when the last accept consumed nothing. */
+  private String _last_accepted_pinyin = "";
 
   public PinyinInput() {}
 
-  public void started(PinyinSchemes.Scheme scheme, Suggestions suggestions)
+  public void started(PinyinSchemes.Scheme scheme, Suggestions suggestions,
+      boolean abbrev)
   {
     _scheme = scheme;
     _suggestions = suggestions;
+    _abbrev = abbrev;
     reset();
   }
 
@@ -142,7 +149,8 @@ public final class PinyinInput
       return;
     }
     List<PinyinEngine.Candidate> decoded = PinyinEngine.decode(
-        PinyinData.get(), _letters, _context_word, PinyinUserDict.counts());
+        PinyinData.get(), _letters, _context_word, PinyinUserDict.counts(),
+        PinyinUserDict.pinyins(), _abbrev);
     List<Candidate> candidates = new ArrayList<Candidate>();
     for (PinyinEngine.Candidate d : decoded)
       candidates.add(new Candidate(d.text,
@@ -163,6 +171,7 @@ public final class PinyinInput
     {
       if (c.text.equals(text))
       {
+        _last_accepted_pinyin = consumed_pinyin_of(c);
         _buffer.delete(0, Math.min(c.keys_consumed, _buffer.length()));
         _context_word = last_word_of(text);
         _letters = translate();
@@ -172,6 +181,36 @@ public final class PinyinInput
     }
     return -1;
   }
+
+  /** The pinyin letters the candidate consumes (only used to learn custom
+      words; syllable-validated so abbreviated-pinyin accepts are not
+      learned with initials as their pinyin). */
+  private String consumed_pinyin_of(Candidate c)
+  {
+    int letters_len = letters_for_keys(c.keys_consumed);
+    letters_len = Math.min(letters_len, _letters.length());
+    String py = _letters.substring(0, letters_len);
+    // Reject spans that are not real syllable sequences (简拼 accepts).
+    int i = 0;
+    while (i < py.length())
+    {
+      int len = PinyinSyllables.max_syllable(py, i);
+      if (len == 0)
+        return "";
+      i += len;
+    }
+    return py;
+  }
+
+  /** The pinyin of the last accepted candidate, for user-word learning. */
+  public String last_accepted_pinyin() { return _last_accepted_pinyin; }
+
+  /** The word committed just before the cursor (bigram context and the
+      next-word prediction context). */
+  public String context_word() { return _context_word; }
+
+  /** Set the context directly (chained predictions). */
+  public void set_context_word(String w) { _context_word = last_word_of(w); }
 
   /** The text to show as the editor's composing region: the best candidate
       if available, otherwise the pinyin preview. */

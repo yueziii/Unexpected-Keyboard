@@ -25,7 +25,7 @@ public class PinyinEngineTest
 
   List<PinyinEngine.Candidate> decode(String letters)
   {
-    return PinyinEngine.decode(_data, letters, null, null);
+    return PinyinEngine.decode(_data, letters, null, null, null, false);
   }
 
   static List<String> texts(List<PinyinEngine.Candidate> cands)
@@ -143,7 +143,7 @@ public class PinyinEngineTest
       new java.util.HashMap<String, Integer>();
     users.put("泥", 50);
     List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, "ni", null,
-        users);
+        users, null, false);
     assertEquals("泥", c.get(0).text);
   }
 
@@ -151,7 +151,7 @@ public class PinyinEngineTest
   public void context_word_biases_first_word()
   {
     List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, "shi", "他",
-        null);
+        null, null, false);
     assertFalse(c.isEmpty());
   }
 
@@ -172,5 +172,72 @@ public class PinyinEngineTest
   {
     assertTrue(decode("").isEmpty());
     assertTrue("qqqxx starts no syllable", decode("qqqxx").isEmpty());
+  }
+
+  // --- 简拼 (abbreviated pinyin) ---
+
+  @Test
+  public void abbrev_candidates_when_no_syllable_parses()
+  {
+    // "nh" parses as no syllable sequence; with abbrev enabled, the
+    // initials of 你好 (and friends) become the candidates.
+    List<String> no_abbrev = texts(PinyinEngine.decode(_data, "nh", null,
+          null, null, false));
+    assertTrue("no candidates without abbrev", no_abbrev.isEmpty());
+    List<String> t = texts(PinyinEngine.decode(_data, "nh", null, null,
+          null, true));
+    assertTrue("你好 via abbrev: " + t, t.contains("你好"));
+    // Committing consumes the whole buffer.
+    for (PinyinEngine.Candidate c : PinyinEngine.decode(_data, "nh", null,
+          null, null, true))
+      if (c.text.equals("你好"))
+        assertEquals(2, c.letters_consumed);
+  }
+
+  @Test
+  public void abbrev_latin_pairs()
+  {
+    // Curated abbreviation pairs from the buzzword list.
+    List<String> t = texts(PinyinEngine.decode(_data, "yyds", null, null,
+          null, true));
+    assertTrue("永远的神 via yyds: " + t, t.contains("永远的神"));
+  }
+
+  @Test
+  public void full_pinyin_still_wins_over_abbrev()
+  {
+    // "nihao" is a full pinyin parse; abbrev must not displace 你好.
+    List<String> t = texts(PinyinEngine.decode(_data, "nihao", null, null,
+          null, true));
+    assertEquals("你好", t.get(0));
+  }
+
+  // --- 自动造词 (custom user words) ---
+
+  @Test
+  public void user_custom_words_surface_for_their_pinyin()
+  {
+    java.util.Map<String, String> pinyins =
+      new java.util.HashMap<String, String>();
+    pinyins.put("泥嚎", "nihao");
+    java.util.Map<String, Integer> users =
+      new java.util.HashMap<String, Integer>();
+    users.put("泥嚎", 3);
+    List<String> t = texts(PinyinEngine.decode(_data, "nihao", null, users,
+          pinyins, false));
+    assertTrue("custom word 泥嚎 offered: " + t, t.contains("泥嚎"));
+  }
+
+  // --- long phrases (poem lines, proverbs) ---
+
+  @Test
+  public void long_phrase_decodes_as_one_candidate()
+  {
+    List<String> t = texts(decode("chuheridangwu"));
+    assertTrue("锄禾日当午 first: " + t,
+        t.size() > 0 && t.get(0).equals("锄禾日当午"));
+    List<String> t2 = texts(decode("yixinyiyi"));
+    assertTrue("一心一意 first: " + t2,
+        t2.size() > 0 && t2.get(0).equals("一心一意"));
   }
 }

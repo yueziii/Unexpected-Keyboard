@@ -82,4 +82,65 @@ public class PinyinUserDictTest
     PinyinUserDict.clear();
     assertEquals(0, PinyinUserDict.count("你好"));
   }
+
+  // --- custom words (自动造词) ---
+
+  @Test
+  public void custom_word_pinyin_is_learned()
+  {
+    PinyinUserDict.record("泥嚎", "nihao");
+    assertEquals("nihao", PinyinUserDict.pinyin_of("泥嚎"));
+    assertEquals(1, PinyinUserDict.count("泥嚎"));
+    // Words without a pinyin are counted but not custom words.
+    PinyinUserDict.record("你好");
+    assertNull(PinyinUserDict.pinyin_of("你好"));
+    // The live map for the engine contains only learned pinyins.
+    assertTrue(PinyinUserDict.pinyins().containsKey("泥嚎"));
+    assertFalse(PinyinUserDict.pinyins().containsKey("你好"));
+  }
+
+  @Test
+  public void empty_pinyin_is_not_learned()
+  {
+    PinyinUserDict.record("泥嚎", "");
+    assertNull(PinyinUserDict.pinyin_of("泥嚎"));
+  }
+
+  // --- word pairs (联想) ---
+
+  @Test
+  public void pair_counts_accumulate()
+  {
+    assertEquals(0, PinyinUserDict.pair_count("你", "好"));
+    PinyinUserDict.record_pair("你", "好");
+    PinyinUserDict.record_pair("你", "好");
+    assertEquals(2, PinyinUserDict.pair_count("你", "好"));
+    assertEquals(0, PinyinUserDict.pair_count("好", "你"));
+    // Empty and null parts are ignored.
+    PinyinUserDict.record_pair(null, "好");
+    PinyinUserDict.record_pair("你", "");
+    assertEquals(2, PinyinUserDict.pair_count("你", "好"));
+    // The live nested map is exposed for the predictor.
+    assertTrue(PinyinUserDict.pairs().containsKey("你"));
+    assertEquals(Integer.valueOf(2),
+        PinyinUserDict.pairs().get("你").get("好"));
+  }
+
+  // --- deletion (candidate long-press) ---
+
+  @Test
+  public void remove_forgets_everything_about_a_word()
+  {
+    PinyinUserDict.record("泥嚎", "nihao");
+    PinyinUserDict.record("你好");
+    PinyinUserDict.record_pair("泥嚎", "世界");
+    PinyinUserDict.record_pair("你好", "泥嚎");
+    PinyinUserDict.remove("泥嚎");
+    assertEquals(0, PinyinUserDict.count("泥嚎"));
+    assertNull(PinyinUserDict.pinyin_of("泥嚎"));
+    assertEquals(0, PinyinUserDict.pair_count("泥嚎", "世界"));
+    assertEquals(0, PinyinUserDict.pair_count("你好", "泥嚎"));
+    // Other words are untouched.
+    assertEquals(1, PinyinUserDict.count("你好"));
+  }
 }

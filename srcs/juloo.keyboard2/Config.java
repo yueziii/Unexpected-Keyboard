@@ -105,6 +105,14 @@ public final class Config
       switch_lang key. [refresh_current_dictionary] must not override
       [pinyin_enabled] in that case; only a real subtype change resets it. */
   public boolean pinyin_user_override = false;
+  /** 简拼: surface candidates whose pinyin initials spell the typed
+      letters (nh -> 你好). */
+  public boolean pinyin_abbrev = true;
+  /** 联想: predict the next word after a commit. */
+  public boolean pinyin_prediction = true;
+  /** Enabled 模糊音 groups (rule names from PinyinData.FUZZY_RULES),
+      empty when disabled. */
+  public java.util.Set<String> pinyin_fuzzy = null;
   public IKeyEventHandler handler;
   public boolean orientation_landscape = false;
   public boolean foldable_unfolded = false;
@@ -186,6 +194,14 @@ public final class Config
     // 0 = full pinyin (全拼), 1 = Microsoft double pinyin (微软双拼)
     pinyin_scheme = _prefs.getString("pinyin_scheme", "full").equals("double")
       ? 1 : 0;
+    pinyin_abbrev = _prefs.getBoolean("pinyin_abbrev", true);
+    pinyin_prediction = _prefs.getBoolean("pinyin_prediction", true);
+    {
+      java.util.Set<String> rules = _prefs.getStringSet("pinyin_fuzzy", null);
+      pinyin_fuzzy = (rules == null || rules.isEmpty())
+        ? null : java.util.Collections.unmodifiableSet(
+            new java.util.HashSet<String>(rules));
+    }
     // The baseline for the swipe distance correspond to approximately the
     // width of a key in portrait mode, as most layouts have 10 columns.
     // Multipled by the DPI ratio because most swipes are made in the diagonals.

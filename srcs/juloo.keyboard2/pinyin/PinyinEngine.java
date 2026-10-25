@@ -32,10 +32,11 @@ public final class PinyinEngine
 {
   /** Longest pinyin of a single syllable ("zhuang"). */
   static final int MAX_SYLLABLE_LEN = 6;
-  /** Longest word pinyin considered for a lattice span: an 8-character word
-      with 6-letter syllables. Words longer than one syllable are common
-      (jintian = 7 letters) and must be lattice nodes. */
-  static final int MAX_SPAN_LEN = 24;
+  /** Longest word pinyin considered for a lattice span: a 12-character
+      phrase (poem lines, proverbs) with 6-letter syllables. Words longer
+      than one syllable are common (jintian = 7 letters) and must be lattice
+      nodes. */
+  static final int MAX_SPAN_LEN = 48;
   /** Convert at most this many input letters at once. */
   static final int MAX_INPUT_LEN = 60;
   /** Beam width for the Viterbi search. */
@@ -46,6 +47,11 @@ public final class PinyinEngine
       words pays it twice. Prevents "很+好" from outranking a good 2-char
       word merely by summing two unigram terms. */
   static final float WORD_PENALTY = 14.0f;
+  /** Extra penalty for single-character lattice nodes, like mainstream
+      IMEs: a chain of common characters (一新一一) must not outrank the
+      matching idiom (一心一意) as a sentence candidate. Characters stay
+      reachable when no word covers the span. */
+  static final float CHAR_PENALTY = 4.0f;
   /** Weight of the corpus bigram bonus: BIGRAM_W * log(1 + count), capped
       at BONUS_CAP. The cap keeps transitions from overriding genuinely
       common words: with linear frequency scaling the unigram gap between a
@@ -103,13 +109,17 @@ public final class PinyinEngine
   /**
    * Decode [letters] (lowercase a-z, possibly a double-pinyin translation)
    * into candidates. [context_word] is the word committed just before this
-   * buffer (bigram context), [user_counts] maps words to usage counts.
+   * buffer (bigram context), [user_counts] maps words to usage counts,
+   * [user_pinyins] maps custom learned words to their pinyin (自动造词,
+   * may be null), [abbrev] enables the abbreviated-pinyin (简拼)
+   * candidates.
    *
    * Returns the ranked candidates; empty when the input has no complete
    * syllable and no completion is available.
    */
   public static List<Candidate> decode(PinyinData data, String letters,
-      String context_word, Map<String, Integer> user_counts)
+      String context_word, Map<String, Integer> user_counts,
+      Map<String, String> user_pinyins, boolean abbrev)
   {
     List<Candidate> out = new ArrayList<Candidate>();
     if (data == null || letters == null || letters.isEmpty())
@@ -268,6 +278,8 @@ public final class PinyinEngine
       // did not surface.
       List<PinyinData.Entry> exact = new ArrayList<PinyinData.Entry>();
       data.query_exact(letters.substring(0, best_end), 24, exact);
+      append_user_words(exact, letters.substring(0, best_end), user_pinyins,
+          user_counts);
       java.util.Collections.sort(exact, BY_EXACT_SCORE(users));
       for (PinyinData.Entry e : exact)
       {
@@ -298,13 +310,36 @@ public final class PinyinEngine
                 syls));
         }
       }
+
+      // 简拼: words whose pinyin initials spell the typed letters (nh ->
+      // 你好), below the full-pinyin candidates like mainstream IMEs.
+      if (abbrev)
+        append_abbrev_candidates(data, letters, n, seen, out);
     }
     else
     {
-      // No complete syllable yet: complete the partial syllable to its most
-      // frequent characters (e.g. "x" -> 西/系/喜...), then words starting
-      // with the same letters (喜欢/系统...), like mainstream IMEs.
-      // Committing consumes the whole buffer.
+      // No complete syllable yet. 简拼 first: the letters may be the
+      // initials of a word (nh -> 你好, sz -> 深圳). Committing consumes the
+      // whole buffer.
+      if (abbrev && n >= 2)
+      {
+        List<PinyinData.Entry> ab = new ArrayList<PinyinData.Entry>();
+        data.query_abbrev(letters, 14, ab);
+        for (PinyinData.Entry e : ab)
+        {
+          if (out.size() >= MAX_CANDIDATES)
+            break;
+          if (!seen.add(e.word))
+            continue;
+          List<String> syls = new ArrayList<String>();
+          syls.add(letters);
+          out.add(new Candidate(e.word, n, syls));
+        }
+      }
+      // Complete the partial syllable to its most frequent characters
+      // (e.g. "x" -> 西/系/喜...), then words starting with the same
+      // letters (喜欢/系统...), like mainstream IMEs. Committing consumes
+      // the whole buffer.
       List<PinyinData.Entry> compl = new ArrayList<PinyinData.Entry>();
       data.query_prefix(letters, 60, compl);
       int chars = 0, words = 0;
@@ -334,9 +369,52 @@ public final class PinyinEngine
     return out;
   }
 
+  /** Words whose initials exactly spell [letters] (e.g. "nh" -> 你好),
+      appended below the full-pinyin candidates. */
+  static void append_abbrev_candidates(PinyinData data, String letters,
+      int n, Set<String> seen, List<Candidate> out)
+  {
+    if (!data.has_abbrev())
+      return;
+    List<PinyinData.Entry> ab = new ArrayList<PinyinData.Entry>();
+    data.query_abbrev_exact(letters, 8, ab);
+    for (PinyinData.Entry e : ab)
+    {
+      if (out.size() >= MAX_CANDIDATES)
+        break;
+      if (!seen.add(e.word))
+        continue;
+      List<String> syls = new ArrayList<String>();
+      syls.add(letters);
+      out.add(new Candidate(e.word, n, syls));
+    }
+  }
+
+  /** Add the user's custom words (自动造词) whose pinyin is exactly [span]
+      to the exact-match list. A synthetic frequency scaled by the usage
+      count ranks them near the top for their own pinyin once the user has
+      committed the phrase a couple of times. */
+  static void append_user_words(List<PinyinData.Entry> exact, String span,
+      Map<String, String> user_pinyins, Map<String, Integer> user_counts)
+  {
+    if (user_pinyins == null || user_pinyins.isEmpty())
+      return;
+    for (Map.Entry<String, String> e : user_pinyins.entrySet())
+    {
+      if (!e.getValue().equals(span))
+        continue;
+      int count = (user_counts != null && user_counts.get(e.getKey()) != null)
+        ? user_counts.get(e.getKey()) : 1;
+      exact.add(new PinyinData.Entry(span, e.getKey(),
+            Math.min(count * 100000, 1000000), -1));
+    }
+  }
+
   static float unigram_score(PinyinData.Entry e, Map<String, Integer> users)
   {
     float score = (float)Math.log(e.freq + 1) - WORD_PENALTY;
+    if (e.word.length() == 1)
+      score -= CHAR_PENALTY;
     if (users != null)
     {
       Integer c = users.get(e.word);

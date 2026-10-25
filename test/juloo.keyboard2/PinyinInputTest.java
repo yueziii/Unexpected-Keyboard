@@ -143,19 +143,48 @@ public class PinyinInputTest
     assertTrue(p.pending_final());
   }
 
+  @Test
+  public void double_pinyin_wo_types_wo()
+  {
+    // 我 wo = w + o; the O key expands to the written final "o" after w
+    // (regression: it used to expand to "uo", producing "wuo")
+    PinyinInput p = double_pinyin();
+    type(p, "wo");
+    assertTrue("我 among candidates", texts(p).contains("我"));
+    assertEquals("wo", p.get_pinyin_string());
+  }
+
+  @Test
+  public void double_pinyin_ny_types_n()
+  {
+    // 女 nv: the Y key expands to "v" (ü) after n
+    PinyinInput p = double_pinyin();
+    type(p, "ny");
+    assertTrue("女 among candidates", texts(p).contains("女"));
+  }
+
+  @Test
+  public void double_pinyin_qs_types_qiong()
+  {
+    // 穷 qiong: the S key expands to "iong" after palatals
+    PinyinInput p = double_pinyin();
+    type(p, "qs");
+    assertTrue("穷 among candidates", texts(p).contains("穷"));
+  }
+
   // --- helpers ---
 
   PinyinInput full()
   {
     PinyinInput p = new PinyinInput();
-    p.started(null, _sug);
+    p.started(null, _sug, false);
     return p;
   }
 
   PinyinInput double_pinyin()
   {
     PinyinInput p = new PinyinInput();
-    p.started(PinyinSchemes.get(1), _sug);
+    p.started(PinyinSchemes.get(1), _sug, false);
     return p;
   }
 

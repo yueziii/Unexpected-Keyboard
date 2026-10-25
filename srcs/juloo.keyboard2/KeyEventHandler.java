@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import juloo.keyboard2.suggestions.Suggestions;
+import juloo.keyboard2.pinyin.PinyinData;
 import juloo.keyboard2.pinyin.PinyinInput;
 import juloo.keyboard2.pinyin.PinyinSchemes;
 import juloo.keyboard2.pinyin.PinyinUserDict;
@@ -87,11 +88,12 @@ public final class KeyEventHandler
     _keyevent_compat = conf.keyevent_compat;
     _last_action = null;
     // Initialize pinyin mode if enabled in the config
+    PinyinData.set_fuzzy(conf.pinyin_fuzzy);
     if (conf.pinyin_enabled)
     {
       if (_pinyin == null)
         _pinyin = new PinyinInput();
-      _pinyin.started(pinyin_scheme(conf), _suggestions);
+      _pinyin.started(pinyin_scheme(conf), _suggestions, conf.pinyin_abbrev);
     }
     else
       _pinyin = null;
@@ -119,7 +121,7 @@ public final class KeyEventHandler
     {
       // Pinyin was just enabled — initialize it
       _pinyin = new PinyinInput();
-      _pinyin.started(pinyin_scheme(conf), _suggestions);
+      _pinyin.started(pinyin_scheme(conf), _suggestions, conf.pinyin_abbrev);
     }
   }
 
@@ -129,10 +131,11 @@ public final class KeyEventHandler
       change would otherwise never reach the active [PinyinInput].) */
   public void pinyin_config_changed(Config conf)
   {
+    PinyinData.set_fuzzy(conf.pinyin_fuzzy);
     if (_pinyin == null)
       return;
     flush_pinyin();
-    _pinyin.started(pinyin_scheme(conf), _suggestions);
+    _pinyin.started(pinyin_scheme(conf), _suggestions, conf.pinyin_abbrev);
   }
 
   /** Selection has been updated. */
