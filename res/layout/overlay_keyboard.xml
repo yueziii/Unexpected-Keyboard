@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent">
+  <!-- [OverlayKeyboardService] lays this content out at the real window size;
+       the root frame matches the window bounds. -->
+  <LinearLayout android:id="@+id/overlay_content"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorKeyboard">
+    <juloo.keyboard2.Keyboard2View android:id="@+id/overlay_keyboard_view"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"/>
+    <!-- Bottom handle bar with the same controls as the floating keyboard
+         (collapse, drag area, resize grip), plus the pin and close buttons. -->
+    <LinearLayout android:id="@+id/overlay_bar"
+      android:orientation="horizontal"
+      android:layout_width="match_parent"
+      android:layout_height="22dp"
+      android:background="?attr/colorKey"
+      android:gravity="center_vertical">
+      <ImageView android:id="@+id/overlay_collapse"
+        android:src="@drawable/ic_collapse_down"
+        android:contentDescription="@string/overlay_btn_collapse"
+        android:scaleType="center"
+        android:layout_width="22dp"
+        android:layout_height="22dp"/>
+      <View android:id="@+id/overlay_drag"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:foreground="@drawable/floating_drag_handle_fg"
+        android:foregroundGravity="center"/>
+      <ImageView android:id="@+id/overlay_pin"
+        android:src="@drawable/ic_overlay_pin"
+        android:contentDescription="@string/overlay_btn_pin"
+        android:scaleType="center"
+        android:layout_width="20dp"
+        android:layout_height="20dp"/>
+      <ImageView android:id="@+id/overlay_resize"
+        android:src="@drawable/floating_resize_handle"
+        android:contentDescription="@string/overlay_btn_resize"
+        android:scaleType="center"
+        android:layout_width="20dp"
+        android:layout_height="20dp"/>
+      <ImageView android:id="@+id/overlay_close"
+        android:src="@drawable/ic_close"
+        android:contentDescription="@string/overlay_btn_close"
+        android:scaleType="center"
+        android:layout_width="22dp"
+        android:layout_height="22dp"/>
+    </LinearLayout>
+  </LinearLayout>
+</FrameLayout>

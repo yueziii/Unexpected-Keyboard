@@ -44,6 +44,9 @@ public class LauncherActivity extends Activity implements Handler.Callback
       _tryhere_area.addOnUnhandledKeyEventListener(
           this.new Tryhere_OnUnhandledKeyEventListener());
     _handler = new Handler(getMainLooper(), this);
+    // The bubble is supposed to stay on screen while the setting is on;
+    // bring it back if the service died since it was last shown.
+    OverlayKeyboardService.start_if_setting_on(this);
   }
 
   @Override
@@ -101,6 +104,33 @@ public class LauncherActivity extends Activity implements Handler.Callback
   public void launch_dictionaries_activity(View v)
   {
     startActivity(new Intent(this, DictionariesActivity.class));
+  }
+
+  public void launch_overlay_permission(View v)
+  {
+    if (VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this))
+      startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:" + getPackageName())));
+    else
+      toggle_overlay_keyboard(v);
+  }
+
+  public void launch_accessibility_settings(View v)
+  {
+    startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+  }
+
+  public void toggle_overlay_keyboard(View v)
+  {
+    if (VERSION.SDK_INT >= 33)
+      requestPermissions(
+          new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 0);
+    Intent intent = new Intent(this, OverlayKeyboardService.class);
+    intent.setAction(OverlayKeyboardService.ACTION_TOGGLE);
+    if (VERSION.SDK_INT >= 26)
+      startForegroundService(intent);
+    else
+      startService(intent);
   }
 
   Animatable find_anim(int id)

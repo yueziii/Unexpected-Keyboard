@@ -169,6 +169,25 @@
     <string name="clipboard_remove_confirm">Remove this clipboard item?</string>
     <string name="clipboard_remove_confirmed">Yes</string>
     <string name="toast_no_voice_input">No voice typing app installed</string>
+    <string name="overlay_notif_channel">Floating keyboard</string>
+    <string name="overlay_notif_title">Floating keyboard running</string>
+    <string name="overlay_notif_text">Tap the bubble to show or hide the keyboard</string>
+    <string name="overlay_notif_toggle">Expand/Collapse</string>
+    <string name="overlay_notif_stop">Stop</string>
+    <string name="overlay_no_target">No focused text field</string>
+    <string name="overlay_unreadable_target">This field can\'t be edited from the overlay</string>
+    <string name="overlay_tile_label">Floating keyboard</string>
+    <string name="overlay_accessibility_label">Floating keyboard text input</string>
+    <string name="overlay_accessibility_summary">Insert text for the floating keyboard overlay</string>
+    <string name="overlay_accessibility_desc">Allows the floating keyboard overlay to type into the focused text field of other apps. It reads only the text and cursor position of the focused editor.</string>
+    <string name="launcher_overlay_hint">Floating keyboard overlay: use this keyboard on top of other apps while another input method stays selected. Grant the overlay permission, enable the accessibility service, then start it.</string>
+    <string name="launcher_overlay_btn_permission">Grant overlay permission</string>
+    <string name="launcher_overlay_btn_accessibility">Enable accessibility service</string>
+    <string name="launcher_overlay_btn_start">Show/hide floating keyboard</string>
+    <string name="overlay_btn_resize">Drag to resize</string>
+    <string name="overlay_btn_collapse">Collapse to the bubble</string>
+    <string name="overlay_btn_close">Stop the floating keyboard</string>
+    <string name="overlay_btn_pin">Keep on top of other apps</string>
     <string name="pref_category_clipboard">Clipboard</string>
     <string name="pref_clipboard_history_duration">Clipboard memory duration</string>
     <string name="pref_clipboard_history_duration_1">At most 1 minute</string>
@@ -200,4 +219,7 @@
   <string name="pref_floating_keyboard_height">Floating keyboard height</string>
   <string name="pref_floating_close_btn">Close keyboard</string>
   <string name="pref_floating_resize_btn">Resize keyboard</string>
+  <string name="pref_category_overlay">Overlay keyboard</string>
+  <string name="pref_overlay_bubble_title">Persistent overlay bubble</string>
+  <string name="pref_overlay_bubble_summary">Keep the bubble on screen at all times, tap it to show or hide the overlay keyboard (the one shown on top of other apps through the overlay permission). Restored after a reboot.</string>
 </resources>

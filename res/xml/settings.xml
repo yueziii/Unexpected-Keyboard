@@ -80,4 +80,10 @@
   <PreferenceCategory android:title="@string/pref_category_clipboard">
     <ListPreference android:key="clipboard_history_duration" android:title="@string/pref_clipboard_history_duration" android:summary="%s" android:defaultValue="5" android:entries="@array/pref_clipboard_duration_entries" android:entryValues="@array/pref_clipboard_duration_values"/>
   </PreferenceCategory>
+  <!-- The overlay keyboard is separate from the floating keyboard mode
+       above: it shows the keyboard on top of other apps through the overlay
+       permission without being the active input method. -->
+  <PreferenceCategory android:title="@string/pref_category_overlay">
+    <CheckBoxPreference android:key="overlay_bubble" android:title="@string/pref_overlay_bubble_title" android:summary="@string/pref_overlay_bubble_summary" android:defaultValue="false"/>
+  </PreferenceCategory>
 </PreferenceScreen>
