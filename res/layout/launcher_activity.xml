@@ -5,6 +5,10 @@
     <Button style="@style/paragraph" android:text="@string/launcher_button_imesettings" android:onClick="launch_imesettings" android:layout_width="wrap_content"/>
     <Button style="@style/paragraph" android:text="@string/launcher_button_imepicker" android:onClick="launch_imepicker" android:layout_width="wrap_content"/>
     <Button style="@style/paragraph" android:text="@string/launcher_button_dictionaries" android:onClick="launch_dictionaries_activity" android:layout_width="wrap_content"/>
+    <TextView style="@style/paragraph" android:text="@string/launcher_overlay_hint"/>
+    <Button style="@style/paragraph" android:text="@string/launcher_overlay_btn_permission" android:onClick="launch_overlay_permission" android:layout_width="wrap_content"/>
+    <Button style="@style/paragraph" android:text="@string/launcher_overlay_btn_accessibility" android:onClick="launch_accessibility_settings" android:layout_width="wrap_content"/>
+    <Button style="@style/paragraph" android:text="@string/launcher_overlay_btn_start" android:onClick="toggle_overlay_keyboard" android:layout_width="wrap_content"/>
     <LinearLayout style="@style/anim_box">
       <ImageView style="@style/anim" android:id="@+id/launcher_anim_swipe" android:background="@drawable/doc_key_u" android:src="@drawable/doc_anim_swipe"/>
       <TextView style="@style/anim_text" android:text="@string/launcher_anim_7"/>

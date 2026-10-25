@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The overlay keyboard uses this service to type into the focused editor of
+     other apps. It only reads the text and selection of the focused editor. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+  android:accessibilityEventTypes="typeWindowStateChanged|typeViewFocused"
+  android:accessibilityFeedbackType="feedbackGeneric"
+  android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+  android:canRetrieveWindowContent="true"
+  android:notificationTimeout="100"
+  android:summary="@string/overlay_accessibility_summary"
+  android:description="@string/overlay_accessibility_desc"/>

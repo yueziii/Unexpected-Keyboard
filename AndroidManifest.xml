@@ -4,6 +4,11 @@
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <!-- Floating keyboard overlay: draw the keyboard on top of other apps -->
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
   <application android:label="@string/app_name" android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:hardwareAccelerated="false">
     <service android:name="juloo.keyboard2.Keyboard2" android:label="@string/app_name" android:permission="android.permission.BIND_INPUT_METHOD" android:exported="true" android:directBootAware="true">
@@ -31,6 +36,32 @@
         <action android:name="android.intent.action.MAIN"/>
       </intent-filter>
     </activity>
+
+    <!-- Floating keyboard overlay: foreground service hosting the window -->
+    <service android:name="juloo.keyboard2.OverlayKeyboardService" android:exported="false" android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Floating keyboard overlay window"/>
+    </service>
+
+    <!-- Restores the persistent overlay bubble at boot -->
+    <receiver android:name="juloo.keyboard2.BootReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+      </intent-filter>
+    </receiver>
+
+    <!-- Types text from the overlay keyboard into the focused editor -->
+    <service android:name="juloo.keyboard2.OverlayAccessibilityService" android:label="@string/overlay_accessibility_label" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="false">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService"/>
+      </intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/overlay_accessibility_config"/>
+    </service>
+
+    <service android:name="juloo.keyboard2.OverlayTileService" android:label="@string/overlay_tile_label" android:icon="@drawable/ic_overlay_bubble" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
+      <intent-filter>
+        <action android:name="android.service.quicksettings.action.QS_TILE"/>
+      </intent-filter>
+    </service>
   </application>
 
   <!-- To query enabled input methods for voice IME detection -->
