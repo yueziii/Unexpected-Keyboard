@@ -35,7 +35,7 @@ import tempfile
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(SCRIPTS)
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 
 def sha256_of(path):
@@ -51,7 +51,9 @@ def count_entries(dict_txt):
     with open(dict_txt, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
-            if line and not line.startswith('#'):
+            # @abbrev lines are 简拼 mappings, not dictionary entries.
+            if line and not line.startswith('#') \
+                    and not line.startswith('@'):
                 n += 1
     return n
 
@@ -80,7 +82,7 @@ def build_pack(args, tmp):
 def update_manifest(out_dir, pack):
     manifest_path = os.path.join(out_dir, 'manifest.json')
     if os.path.exists(manifest_path):
-        with open(manifest_path, 'r', 'utf-8') as f:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
             manifest = json.load(f)
         packs = [p for p in manifest.get('packs', [])
                  if p.get('id') != pack['id']]
@@ -88,6 +90,9 @@ def update_manifest(out_dir, pack):
         manifest = {'format_version': MANIFEST_VERSION}
         packs = []
     packs.append(pack)
+    # The manifest format version follows the writer: a pack built by this
+    # script version uses the current binary format.
+    manifest['format_version'] = MANIFEST_VERSION
     manifest['updated'] = pack['date']
     manifest['packs'] = sorted(packs, key=lambda p: p.get('date', ''),
                                reverse=True)
@@ -107,7 +112,8 @@ def main():
     ap.add_argument('--name', default='扩展词库')
     ap.add_argument('--description',
                     default='在内置词库基础上放宽词频限制，收录更多低频词、'
-                            '领域词，并加大词对模型')
+                            '更深入的行业术语，以及成语、诗词名句、俗语歇后语'
+                            '与网络热词等分类词库（PYD2 格式，支持简拼索引）')
     ap.add_argument('--multi-limit', type=int, default=200000,
                     help='Maximum number of multi-character word entries')
     ap.add_argument('--max-pairs', type=int, default=1000000,

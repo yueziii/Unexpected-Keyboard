@@ -12,7 +12,8 @@ for repo in \
   https://github.com/rime/rime-essay \
   https://github.com/fxsjy/jieba \
   https://github.com/thunlp/THUOCL \
-  https://github.com/BYVoid/OpenCC
+  https://github.com/BYVoid/OpenCC \
+  https://github.com/pwxcoo/chinese-xinhua
 do
   dir=$(basename "$repo")
   if [ -d "$dir" ]; then
@@ -22,3 +23,14 @@ do
     git clone --depth 1 "$repo"
   fi
 done
+
+# chinese-poetry is huge; sparse-checkout only the 蒙学 folder (tangshi
+# sanbaishou, zengguangxianwen, qianjiashi) needed for famous-line entries.
+if [ -d "chinese-poetry" ]; then
+  echo "Already present: chinese-poetry"
+else
+  echo "Cloning chinese-poetry (sparse: 蒙学)"
+  git clone --depth 1 --filter=blob:none --sparse \
+    https://github.com/chinese-poetry/chinese-poetry
+  (cd chinese-poetry && git sparse-checkout set 蒙学)
+fi

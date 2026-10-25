@@ -80,11 +80,14 @@ public final class PinyinDictManager
   }
 
   /** Parse a manifest JSON document (see cloud/pinyin-dictionaries in the
-      repository for the format and how it is produced). */
+      repository for the format and how it is produced). Version 2 packs
+      use the PYD2 dictionary format (with the 简拼 index); both are
+      accepted, the binaries are validated on install. */
   public static List<Pack> parse_manifest(String json) throws Exception
   {
     JSONObject root = new JSONObject(json);
-    if (root.optInt("format_version", 0) != 1)
+    int version = root.optInt("format_version", 0);
+    if (version != 1 && version != 2)
       throw new Exception("Unsupported manifest format version");
     JSONArray arr = root.getJSONArray("packs");
     List<Pack> packs = new ArrayList<Pack>();

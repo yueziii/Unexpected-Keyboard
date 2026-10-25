@@ -91,6 +91,30 @@ public class PinyinDataTest
     assertTrue(has_word(r, "女"));
   }
 
+  @Test
+  public void industry_vocabulary_is_bundled()
+  {
+    // The mainstream head of every THUOCL domain list ships in the built-in
+    // dictionary (see DOMAIN_WORDS in gen_pinyin_dict.py): one representative
+    // term per field that the global frequency cut used to drop.
+    String[] pinyin_word = new String[]{
+      "manxingqiguanyan", "慢性气管炎", // medical
+      "neihediaoshi", "内核调试",       // IT
+      "kaitingshenli", "开庭审理",      // law
+      "fanzuixianyiren", "犯罪嫌疑人",  // law
+      "yuecai", "粤菜",                 // food
+      "tingpai", "停牌",                // finance
+    };
+    for (int i = 0; i < pinyin_word.length; i += 2)
+    {
+      List<PinyinData.Entry> r = new ArrayList<PinyinData.Entry>();
+      _data.query_exact(pinyin_word[i], 50, r);
+      assertTrue("domain word " + pinyin_word[i + 1] + " ("
+            + pinyin_word[i] + ") in the bundled dictionary",
+          has_word(r, pinyin_word[i + 1]));
+    }
+  }
+
   static boolean has_word(List<PinyinData.Entry> l, String w)
   {
     for (PinyinData.Entry e : l)
@@ -140,6 +164,113 @@ public class PinyinDataTest
     assertTrue("bigram(的, 是) observed in corpus",
         _data.bigram_count(de, shi) > 0);
     assertEquals(0, _data.bigram_count(-1, -1));
+  }
+
+  @Test
+  public void v2_format_with_abbrev_index()
+  {
+    assertTrue("compiled dictionary has the abbrev index",
+        _data.has_abbrev());
+    // Word frequencies are exposed (v2 word table).
+    int ni = _data.lookup_word_id("你");
+    assertTrue(ni >= 0);
+    assertTrue("word freq of 你 positive", _data.word_freq(ni) > 0);
+  }
+
+  @Test
+  public void abbrev_lookup_by_initials()
+  {
+    // 简拼: initials of multi-character words.
+    List<PinyinData.Entry> r = new ArrayList<PinyinData.Entry>();
+    _data.query_abbrev("nh", 10, r);
+    assertTrue("nh -> 你好", has_word(r, "你好"));
+    r.clear();
+    _data.query_abbrev("bj", 10, r);
+    assertFalse("bj has candidates", r.isEmpty());
+    // Results are ranked by word frequency.
+    for (int i = 1; i < r.size(); i++)
+      assertTrue("ranked by freq", r.get(i - 1).freq >= r.get(i).freq);
+  }
+
+  @Test
+  public void abbrev_lookup_explicit_pairs()
+  {
+    // Curated latin abbreviations from scripts/data/extra/buzzwords.txt.
+    List<PinyinData.Entry> r = new ArrayList<PinyinData.Entry>();
+    _data.query_abbrev_exact("yyds", 10, r);
+    assertTrue("yyds -> 永远的神", has_word(r, "永远的神"));
+    r.clear();
+    _data.query_abbrev_exact("pyq", 10, r);
+    assertTrue("pyq -> 朋友圈", has_word(r, "朋友圈"));
+  }
+
+  @Test
+  public void bigram_top_continuations()
+  {
+    int de = _data.lookup_word_id("的");
+    List<PinyinData.BigramCand> cs = _data.bigram_top(de, 5);
+    assertFalse("continuations of 的", cs.isEmpty());
+    assertTrue("at most k", cs.size() <= 5);
+    for (int i = 1; i < cs.size(); i++)
+      assertTrue("sorted by count", cs.get(i - 1).count >= cs.get(i).count);
+    for (PinyinData.BigramCand c : cs)
+      assertTrue(_data.word_of(c.word_id) != null);
+  }
+
+  @Test
+  public void fuzzy_query_expands()
+  {
+    // Without rules, no expansion.
+    assertFalse(PinyinData.fuzzy_enabled());
+    List<PinyinData.Entry> r = new ArrayList<PinyinData.Entry>();
+    _data.query_exact("zong", 10, r);
+    assertFalse("中 not matched without fuzzy", has_word(r, "中"));
+    try
+    {
+      java.util.Set<String> rules = new java.util.HashSet<String>();
+      rules.add("z_zh");
+      PinyinData.set_fuzzy(rules);
+      assertTrue(PinyinData.fuzzy_enabled());
+      r.clear();
+      _data.query_exact("zong", 10, r);
+      assertTrue("zong matches 中 (zhong) with z/zh", has_word(r, "中"));
+      // Prefix queries expand as well: "zan" also matches the zh- initial
+      // entries (战 zhan...) that a plain prefix scan would never return.
+      r.clear();
+      _data.query_prefix("zan", 40, r);
+      boolean has_zhan_word = false;
+      for (PinyinData.Entry e : r)
+        if (e.pinyin.startsWith("zhan"))
+          has_zhan_word = true;
+      assertTrue("prefix zan matches zhan words with z/zh", has_zhan_word);
+    }
+    finally
+    {
+      PinyinData.set_fuzzy(null);
+    }
+    assertFalse(PinyinData.fuzzy_enabled());
+  }
+
+  @Test
+  public void categories_are_bundled()
+  {
+    // Idioms, poem lines, proverbs and buzzwords from the new corpora.
+    String[][] pinyin_word = new String[][]{
+      { "yixinyiyi", "一心一意" },          // 成语
+      { "xiongyouchengzhu", "胸有成竹" },   // 成语
+      { "chuheridangwu", "锄禾日当午" },    // 唐诗
+      { "chuangqianmingyueguang", "床前明月光" }, // 名句清单
+      { "xianyanbao", "显眼包" },           // 网络热词
+      { "yaoyaolingxian", "遥遥领先" },     // 网络热词
+      { "santiandayuliangtianshaiwang", "三天打鱼两天晒网" }, // 俗语
+    };
+    for (String[] pw : pinyin_word)
+    {
+      List<PinyinData.Entry> r = new ArrayList<PinyinData.Entry>();
+      _data.query_exact(pw[0], 50, r);
+      assertTrue(pw[1] + " (" + pw[0] + ") in the dictionary",
+          has_word(r, pw[1]));
+    }
   }
 
   @Test(expected = IllegalArgumentException.class)

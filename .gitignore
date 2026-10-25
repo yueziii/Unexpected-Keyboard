@@ -11,7 +11,10 @@
 # Directory _build is not used anymore
 /_build
 /release
-scripts/data/
+# Corpora are cloned by scripts/download_pinyin_data.sh; the curated extra
+# word lists (buzzwords, proverbs, famous lines) are versioned here.
+scripts/data/*
+!scripts/data/extra/
 __pycache__/
 .zcode/
 # Binary dictionary packs are large; they live in the separate

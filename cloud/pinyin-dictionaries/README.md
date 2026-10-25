@@ -12,26 +12,30 @@
 
 ```json
 {
-  "format_version": 1,
-  "updated": "2026-10-01",
+  "format_version": 2,
+  "updated": "2026-10-25",
   "packs": [
     {
       "id": "extended",
       "name": "扩展词库",
       "description": "…",
-      "entries": 213000,
-      "date": "2026-10-01",
-      "dict":   {"path": "packs/extended/2026-10-01/py_dict.bin",
-                 "sha256": "…", "bytes": 7100000},
-      "bigram": {"path": "packs/extended/2026-10-01/py_bigram.bin",
-                 "sha256": "…", "bytes": 1000000}
+      "entries": 292000,
+      "date": "2026-10-25",
+      "dict":   {"path": "packs/extended/2026-10-25/py_dict.bin",
+                 "sha256": "…", "bytes": 17900000},
+      "bigram": {"path": "packs/extended/2026-10-25/py_bigram.bin",
+                 "sha256": "…", "bytes": 300000}
     }
   ]
 }
 ```
 
 `path` 相对于本文件所在 URL；`dict` 与 `bigram` 必须是同一次编译产出的成对
-文件（客户端会校验两者词表一致）。`format_version` 目前只支持 `1`。
+文件（客户端会校验两者词表一致）。
+
+- `format_version: 1` — PYD1 词库格式（无简拼索引），客户端仍可安装；
+- `format_version: 2` — PYD2 词库格式：词表带词频、附带简拼（声母）索引，
+  含成语、诗词名句、俗语、歇后语与网络热词分类词库。
 
 ## 重建词库包
 

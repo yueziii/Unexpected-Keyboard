@@ -1,22 +1,22 @@
 {
-  "format_version": 1,
-  "updated": "2026-10-01",
+  "format_version": 2,
+  "updated": "2026-10-25",
   "packs": [
     {
       "id": "extended",
       "name": "扩展词库",
-      "description": "在内置词库基础上放宽词频限制，收录更多低频词、领域词，并加大词对模型",
-      "entries": 227439,
-      "date": "2026-10-01",
+      "description": "在内置词库基础上放宽词频限制，收录更多低频词、更深入的行业术语，以及成语、诗词名句、俗语歇后语与网络热词等分类词库（PYD2 格式，支持简拼索引）",
+      "entries": 292758,
+      "date": "2026-10-25",
       "dict": {
-        "path": "packs/extended/2026-10-01/py_dict.bin",
-        "sha256": "bc690717d636f6e3657608ce07ee79ebb6fe4b00e2ca0731fbe52768d5e8c095",
-        "bytes": 8759357
+        "path": "packs/extended/2026-10-25/py_dict.bin",
+        "sha256": "57a57e8e889fcc3a9a7b537f29cb26afc3beae8356bf41cbf8cbea78f350c7f1",
+        "bytes": 17939487
       },
       "bigram": {
-        "path": "packs/extended/2026-10-01/py_bigram.bin",
-        "sha256": "af1a6f29ef523c25aa7586ba7f59b1100bd1053e9155022c60ee2b79971dd761",
-        "bytes": 309422
+        "path": "packs/extended/2026-10-25/py_bigram.bin",
+        "sha256": "d24050601b0493f83b7429489e09efccafc2662d8193c97bfc9a59dd03877474",
+        "bytes": 309572
       }
     }
   ]

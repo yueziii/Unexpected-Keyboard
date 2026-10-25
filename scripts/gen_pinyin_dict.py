@@ -11,18 +11,59 @@ Corpora (clone into --data-dir; see download_pinyin_data.sh):
   rime/rime-luna-pinyin         word list with pinyin (traditional script)
   rime/rime-essay               word frequencies (large balanced corpus)
   fxsjy/jieba                   word frequencies (very large, web scale)
-  thunlp/THUOCL                 domain-specific high-frequency words
+  thunlp/THUOCL                 domain-specific high-frequency words (the
+                                mainstream head of each industry list is
+                                force-included, see DOMAIN_WORDS)
   BYVoid/OpenCC                 traditional → simplified conversion
+  pwxcoo/chinese-xinhua         成语 (with annotated pinyin) + 歇后语
+  chinese-poetry/chinese-poetry 蒙学 anthologies (唐诗三百首/千家诗/增广贤文)
+                                → famous-line segments, converted to simplified
+
+Extra curated word lists live in scripts/data/extra/ (versioned in the repo):
+  buzzwords.txt    网络热词, plus latin abbreviation pairs (yyds -> 永远的神)
+  proverbs.txt     俗语谚语
+  famous_lines.txt 诗词名句 beyond the anthologies
+They are force-included at a tiered frequency (see *_FLOOR). Lines starting
+with "@abbrev" in the output map a latin abbreviation to a word for the
+abbreviated-pinyin (简拼) index built by gen_pinyin_bin.py.
 
 Frequencies from the different corpora are merged on a common scale using a
 logarithmic normalization (see normalize_freq), so words seen by several
 corpora get the maximum of their normalized scores and single characters do
 not automatically outrank common multi-character words.
 """
-import argparse, codecs, math, os, re, sys, unicodedata
+import argparse, codecs, json, math, os, re, sys, unicodedata
 
 FREQ_SCALE = 1000000
 DEFAULT_MULTI_LIMIT = 90000
+
+# Industry vocabulary (THUOCL): force-include the top words of every domain
+# list regardless of the multi-char limit, so the mainstream vocabulary of
+# each field (IT, medicine, law, finance...) ships with the built-in
+# dictionary. DOMAIN_WORDS caps how deep each list goes, DOMAIN_MIN_FREQ
+# drops words seen only once or twice (extraction noise). Forced words rank
+# at DOMAIN_FLOOR when their corpus frequency is lower: above the long-tail
+# band that the multi-char cut leaves behind (freq ≈ 120), below everyday
+# words, so they surface in the candidate list and take part in sentence
+# decoding without displacing common words.
+DOMAIN_WORDS = 6000
+DOMAIN_MIN_FREQ = 3
+DOMAIN_FLOOR = 1000
+
+# Tiered floors for the force-included categories. Buzzwords must surface
+# high in the candidate list; idioms only need to outrank the long tail,
+# because the decoder penalizes single-character lattice nodes, so an idiom
+# span always beats a same-length chain of common characters. Poem lines
+# and proverbs behave like idioms.
+BUZZ_FLOOR = 5000
+IDIOM_FLOOR = 1000
+PHRASE_FLOOR = 800
+# Long phrases (poem lines, proverbs, xiehouyu) may be up to this many
+# characters; ordinary corpus words keep the 6-character cap.
+CATEGORY_MAX_LEN = 12
+# Poetry segments shorter than this are mostly fragments already covered by
+# ordinary dictionary words.
+MIN_POETRY_LEN = 4
 
 def strip_tones(p):
     n = unicodedata.normalize('NFD', p)
@@ -165,7 +206,119 @@ class Corpora:
                         word_pinyin_trad.setdefault(word, set()).add(py)
         return word_pinyin_trad
 
+    # ---- chinese-xinhua: idioms with annotated pinyin ----
+    def idioms(self):
+        """[(word, pinyin_or_None)] — pinyin from the corpus when it has one
+        syllable per character, None to fall back to per-character reading."""
+        out = []
+        with open(self.path('chinese-xinhua', 'data/idiom.json'),
+                  encoding='utf-8') as f:
+            for e in json.load(f):
+                word = e.get('word', '')
+                if not (2 <= len(word) <= CATEGORY_MAX_LEN) or not is_han(word):
+                    continue
+                py = None
+                syls = [strip_tones(p) for p in e.get('pinyin', '').split()]
+                if (len(syls) == len(word) and all(syls)
+                        and all('a' <= c <= 'z' for s in syls for c in s)):
+                    py = ''.join(syls)
+                out.append((word, py))
+        return out
+
+    # ---- chinese-xinhua: xiehouyu riddles ----
+    def xiehouyu(self):
+        """Front parts of 歇后语 (the part people type), punctuation
+        stripped. The punchlines are ordinary words mostly covered by the
+        frequency corpora, so they are not repeated here."""
+        out = set()
+        with open(self.path('chinese-xinhua', 'data/xiehouyu.json'),
+                  encoding='utf-8') as f:
+            for e in json.load(f):
+                for part in re.split(r'[，。！？；、,.!?;:]',
+                                     e.get('riddle', '')):
+                    part = part.strip()
+                    if (MIN_POETRY_LEN <= len(part) <= CATEGORY_MAX_LEN
+                            and is_han(part)):
+                        out.add(part)
+        return sorted(out)
+
+    # ---- chinese-poetry 蒙学 anthologies: famous-line segments ----
+    def poetry_lines(self, trad_to_simp):
+        """Simplified segments (4..12 chars) of 唐诗三百首, 千家诗 and
+        增广贤文 lines, split on punctuation. 增广贤文 is the classic proverb
+        anthology, so it doubles as a 俗语 source."""
+        out = set()
+        for rel in ('tangshisanbaishou.json', 'qianjiashi.json',
+                    'zengguangxianwen.json'):
+            with open(self.path('chinese-poetry', '蒙学/' + rel),
+                      encoding='utf-8') as f:
+                doc = json.load(f)
+            for para in poetry_paragraphs(doc):
+                for part in re.split(r'[，。！？；、,.!?;:]', para):
+                    part = trad_to_simp(part.strip())
+                    if (MIN_POETRY_LEN <= len(part) <= CATEGORY_MAX_LEN
+                            and is_han(part)):
+                        out.add(part)
+        return sorted(out)
+
+    # ---- curated extra word lists (versioned in the repo) ----
+    def extra_lists(self):
+        """{filename: (words, [(abbrev, word)])} from scripts/data/extra/."""
+        extra_dir = os.path.join(self.data_dir, 'extra')
+        out = {}
+        for name in sorted(os.listdir(extra_dir)):
+            if not name.endswith('.txt'):
+                continue
+            words, abbrs = [], []
+            with open(os.path.join(extra_dir, name), encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '\t' in line:
+                        abbrev, word = line.split('\t', 1)
+                        abbrev, word = abbrev.strip(), word.strip()
+                        if abbrev and word:
+                            abbrs.append((abbrev, word))
+                    else:
+                        words.append(line)
+            out[name] = (words, abbrs)
+        return out
+
     # ---- word frequencies from three corpora ----
+    def thuocl_lists(self):
+        """THUOCL domain word lists: [(domain, [(word, freq)]) ...] with each
+        list sorted by descending frequency. Plain open() is required here:
+        THUOCL_diming.txt uses CR-only line endings and a BOM, which
+        codecs.open (no universal newlines) mis-parses into a single line,
+        and universal newline translation plus utf-8-sig handle both."""
+        lists = []
+        thuocl_dir = os.path.join(self.data_dir, 'THUOCL', 'data')
+        if not os.path.isdir(thuocl_dir):
+            return lists
+        for name in sorted(os.listdir(thuocl_dir)):
+            if not name.endswith('.txt'):
+                continue
+            freqs = {}
+            with open(os.path.join(thuocl_dir, name), 'r',
+                      encoding='utf-8-sig') as f:
+                for line in f:
+                    parts = line.strip().split('\t')
+                    if len(parts) < 2:
+                        continue
+                    word = parts[0].strip()
+                    try:
+                        freq = int(parts[1].strip())
+                    except ValueError:
+                        continue
+                    if not (2 <= len(word) <= 6) or not is_han(word):
+                        continue
+                    if word not in freqs or freq > freqs[word]:
+                        freqs[word] = freq
+            lists.append((name[len('THUOCL_'):-len('.txt')],
+                          sorted(freqs.items(), key=lambda x: -x[1])))
+        return lists
+
     def word_freqs(self, trad_to_simp):
         essay_freq = {}
         with codecs.open(self.path('rime-essay', 'essay.txt'), 'r', 'utf-8') as f:
@@ -211,27 +364,31 @@ class Corpora:
                     jieba_geo_chars.add(word)
 
         thuocl_freq = {}
-        thuocl_dir = os.path.join(self.data_dir, 'THUOCL', 'data')
-        if os.path.isdir(thuocl_dir):
-            for name in os.listdir(thuocl_dir):
-                if not name.endswith('.txt'):
-                    continue
-                with codecs.open(os.path.join(thuocl_dir, name), 'r', 'utf-8') as f:
-                    for line in f:
-                        parts = line.strip().split('\t')
-                        if len(parts) < 2:
-                            continue
-                        word = parts[0].strip()
-                        try:
-                            freq = int(parts[1].strip())
-                        except ValueError:
-                            continue
-                        if not (2 <= len(word) <= 6) or not is_han(word):
-                            continue
-                        if word not in thuocl_freq or freq > thuocl_freq[word]:
-                            thuocl_freq[word] = freq
+        for _domain, words in self.thuocl_lists():
+            for word, freq in words:
+                if word not in thuocl_freq or freq > thuocl_freq[word]:
+                    thuocl_freq[word] = freq
 
         return essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars
+
+def poetry_paragraphs(doc):
+    """All paragraph strings of a 蒙学 JSON document, whatever its nesting
+    (唐诗三百首/千家诗 group by verse type, 增广贤文 by chapter)."""
+    paras = []
+    def walk(node):
+        if isinstance(node, dict):
+            if 'paragraphs' in node:
+                # Some anthologies nest objects inside paragraphs; only the
+                # plain strings are poem lines.
+                paras.extend(p for p in node['paragraphs']
+                             if isinstance(p, str))
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    walk(doc.get('content'))
+    return paras
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -244,6 +401,9 @@ def main():
                     help='Intermediate text dictionary, consumed by gen_pinyin_bin.py')
     ap.add_argument('--multi-limit', type=int, default=DEFAULT_MULTI_LIMIT,
                     help='Maximum number of multi-character word entries')
+    ap.add_argument('--domain-words', type=int, default=DOMAIN_WORDS,
+                    help='Top words per THUOCL domain list to force-include '
+                         'regardless of the multi-char limit (0 disables)')
     args = ap.parse_args()
 
     corpora = Corpora(args.data_dir)
@@ -344,23 +504,108 @@ def main():
             if key not in entries or freq > entries[key]:
                 entries[key] = freq
 
+    # Industry vocabulary: the head of every THUOCL domain list ships in the
+    # built-in dictionary. These words lose the global frequency competition
+    # against general words (THUOCL counts are corpus-local and most of each
+    # list normalizes below the multi-char cut), so they are added here
+    # explicitly, at DOMAIN_FLOOR when their natural frequency is lower.
+    domain_added = 0
+    if args.domain_words > 0:
+        selected = set(w for w, _ in multi_words)
+        for domain, words in corpora.thuocl_lists():
+            for word, raw_freq in words[:args.domain_words]:
+                if raw_freq < DOMAIN_MIN_FREQ or word in selected:
+                    continue
+                pinyins = get_word_pinyins(word)
+                if not pinyins:
+                    missing += 1
+                    continue
+                freq = max(merged_freq(word), DOMAIN_FLOOR)
+                for py in pinyins:
+                    key = (py, word)
+                    if key not in entries or freq > entries[key]:
+                        entries[key] = freq
+                selected.add(word)
+                domain_added += 1
+
+    # ---- force-included categories: idioms, poem lines, proverbs,
+    # xiehouyu and curated extra lists ----
+    # These words are longer than the 6-character corpus cap and mostly
+    # absent from the frequency corpora, so they are added explicitly at a
+    # tiered floor. Long phrases surface through their exact full pinyin
+    # (where a single-span lattice node beats any multi-word path), so the
+    # floor only needs to keep them above the long tail.
+    category_counts = {}
+    abbrev_pairs = []  # (latin abbrev, word) for the 简拼 index
+
+    def add_category(name, words, floor, pinyin_of=None):
+        added = 0
+        for word in words:
+            if not (1 <= len(word) <= CATEGORY_MAX_LEN) or not is_han(word):
+                continue
+            pinyins = pinyin_of(word) if pinyin_of else get_word_pinyins(word)
+            if not pinyins:
+                continue
+            freq = max(merged_freq(word), floor)
+            for py in pinyins:
+                key = (py, word)
+                if key not in entries or freq > entries[key]:
+                    entries[key] = freq
+            added += 1
+        category_counts[name] = added
+
+    # 成语: the corpus pinyin is authoritative for polyphones inside idioms;
+    # entries without a usable one fall back to the generic word pinyin.
+    idioms = corpora.idioms()
+    idiom_pinyin = {w: py for w, py in idioms if py}
+    add_category('idioms',
+                 [w for w, _ in idioms],
+                 IDIOM_FLOOR,
+                 lambda w: {idiom_pinyin[w]} if w in idiom_pinyin
+                           else get_word_pinyins(w))
+
+    add_category('poetry', corpora.poetry_lines(trad_to_simp), PHRASE_FLOOR)
+    add_category('xiehouyu', corpora.xiehouyu(), PHRASE_FLOOR)
+
+    extra = corpora.extra_lists()
+    for fname, (words, abbrs) in extra.items():
+        # Buzzwords rank high; proverbs and famous lines are lookup-only.
+        floor = BUZZ_FLOOR if 'buzzword' in fname else PHRASE_FLOOR
+        add_category(fname, words, floor)
+        for abbrev, word in abbrs:
+            # The mapped word must itself be a dictionary word for the
+            # abbrev index to resolve it; add it if the lists did not.
+            if not any(w == word for w in words):
+                add_category(fname + '-abbrev-target', [word], floor)
+            abbrev_pairs.append((abbrev, word))
+
     sorted_entries = sorted(entries.items(), key=lambda x: -x[1])
 
     with codecs.open(args.output, 'w', 'utf-8') as f:
         f.write("# Pinyin dictionary for Unexpected Keyboard\n")
         f.write("# Generated by scripts/gen_pinyin_dict.py from: pinyin-data, "
                 "phrase-pinyin-data, rime-luna-pinyin, rime-essay, jieba, "
-                "THUOCL, OpenCC\n")
+                "THUOCL, OpenCC, chinese-xinhua, chinese-poetry\n")
         f.write("# Format: pinyin<TAB>word<TAB>freq\n")
         f.write("# All pinyin without tones; syllables joined; ü = v\n")
+        f.write("# Lines '@abbrev<TAB>letters<TAB>word' map a latin "
+                "abbreviation to a word for the 简拼 index\n")
         for (py, word), freq in sorted_entries:
             f.write(f"{py}\t{word}\t{freq}\n")
+        known = {w for (_, w), _ in sorted_entries}
+        for abbrev, word in abbrev_pairs:
+            if word in known:
+                f.write(f"@abbrev\t{abbrev}\t{word}\n")
 
     size = os.path.getsize(args.output)
     single = sum(1 for (py, w), _ in sorted_entries if len(w) == 1)
     multi = sum(1 for (py, w), _ in sorted_entries if len(w) > 1)
     uchars = len(set(w for (py, w), _ in sorted_entries if len(w) == 1))
     print(f"Multi-char words missing pinyin: {missing}", file=sys.stderr)
+    print(f"Domain words force-included: {domain_added}", file=sys.stderr)
+    for name, count in category_counts.items():
+        print(f"Category {name}: {count}", file=sys.stderr)
+    print(f"Abbreviation pairs: {len(abbrev_pairs)}", file=sys.stderr)
     print(f"Output: {args.output}", file=sys.stderr)
     print(f"Total entries: {len(sorted_entries)}", file=sys.stderr)
     print(f"File size: {size} bytes ({size/1024:.0f} KB)", file=sys.stderr)
@@ -370,7 +615,13 @@ def main():
     test = {'你好': 'nihao', '中国': 'zhongguo', '谢谢': 'xiexie',
             '再见': 'zaijian', '什么': 'shenme', '怎么': 'zenme',
             '现在': 'xianzai', '今天': 'jintian', '钢琴': 'gangqin',
-            '电脑': 'diannao', '北京': 'beijing', '手机': 'shouji'}
+            '电脑': 'diannao', '北京': 'beijing', '手机': 'shouji',
+            # categories
+            '一心一意': 'yixinyiyi', '胸有成竹': 'xiongyouchengzhu',
+            '床前明月光': 'chuangqianmingyueguang',
+            '锄禾日当午': 'chuheridangwu',
+            '显眼包': 'xianyanbao', '遥遥领先': 'yaoyaolingxian',
+            '三天打鱼两天晒网': 'santiandayuliangtianshaiwang'}
     print("Verification:", file=sys.stderr)
     found = {(py, w) for (py, w), _ in sorted_entries}
     for w, expected in test.items():

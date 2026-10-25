@@ -11,6 +11,11 @@ import java.util.Map;
  * "final" (韵母). Some finals are context-dependent on the initial.
  *
  * This class provides the Microsoft Double Pinyin scheme (微软拼音双拼).
+ * Every key pair expands to the standard orthographic written form of the
+ * syllable — the spelling the dictionary stores — so "wo" (我) expands to
+ * "wo", not the phonetic decomposition "wuo". The key tables and context
+ * rules were verified against reference implementations of the scheme
+ * (the rime double_pinyin_mspy algebra and published key charts).
  */
 public final class PinyinSchemes
 {
@@ -63,16 +68,41 @@ public final class PinyinSchemes
    * Final (韵母) — key → final (context-dependent where noted):
    *   a→a   b→ou  c→iao  d→iang/uang   e→e   f→en  g→eng  h→ang
    *   i→i   j→an  k→ao   l→ai    m→ian n→in  o→uo/o  p→un
-   *   q→iu  r→uan/er s→ong/iong t→ue(üe) u→u v→ui/ü w→ia/ua x→ie
-   *   y→uai z→ei  ;→ing
+   *   q→iu  r→uan/er s→ong/iong t→ue(üe) u→u v→ui/üe w→ia/ua x→ie
+   *   y→uai/ü z→ei  ;→ing
    *
-   * Context rules:
-   *   d: "iang" after j,q,x,n,l; "uang" otherwise
-   *   w: "ia" after j,q,x (palatals); "ua" otherwise
-   *   s: "ong" normally; "iong" after zero-initial
-   *   r: "uan" normally; "er" after zero-initial
-   *   o: "uo" normally; "o" after labials (b,p,m,f) and zero-initial
-   *   v: "ui" normally; "ü"(written "v") after n,l
+   * Context rules. Syllables written with a w/y glide (我 wo, 外 wai,
+   * 一 yi, 要 yao ...) take the w/y initial with the SIMPLE final
+   * (wai = w+l, wei = w+z, wen = w+f, yao = y+k, ye = y+e, you = y+b):
+   * the glide finals (ua uai uan uang uo ui un / ia iao ie ian iang iu
+   * iong) only occur after consonant initials. Expansions are written
+   * forms, matched against the dictionary:
+   *   d: "iang" after j,q,x,n,l (jiang qiang xiang niang liang);
+   *      "uang" otherwise (guang kuang huang zhuang chuang shuang)
+   *   w: "ia" after j,q,x,l,d (jia qia xia lia dia); "ua" otherwise
+   *      (hua gua kua zhua chua shua rua)
+   *   s: "iong" after j,q,x (jiong qiong xiong); "ong" otherwise
+   *      (dong zhong yong = y+ong)
+   *   r: "er" after zero-initial (儿 二 er); "uan" otherwise
+   *      (duan juan quan xuan yuan ...)
+   *   o: "o" after labials b,p,m,f (bo po mo fo), after w (wo 我),
+   *      after y (yo 哟) and after zero-initial (哦 oo); "uo" otherwise
+   *      (duo guo kuo huo zhuo chuo shuo ruo zuo cuo suo tuo nuo luo)
+   *   t: "üe" written "ve" after n,l (nve 虐, lve 略); "ue" otherwise
+   *      (jue que xue yue)
+   *   v: "üe" written "ve" after n,l (nv keys → nve 虐, lv → lve 略);
+   *      "ue" after j,q,x,y (jv → jue 决, yv → yue 月); "ui" otherwise
+   *      (dui tui gui kui hui zhui chui shui rui zui cui sui)
+   *   y: "ü" written "v" after n,l (ny → nv 女, ly → lv 绿); written "u"
+   *      after j,q,x,y (jy → ju 居, yy → yu 雨); "uai" otherwise
+   *      (guai kuai huai zhuai chuai shuai)
+   *
+   * Zero-initial syllables (啊爱安昂熬恩鞥哦欧儿诶饿) are typed with the
+   * O key (A and E also work) followed by the final's key: ol=爱, oj=安,
+   * oh=昂, ok=熬, of=恩, og=鞥, oz=诶, ob=欧, or=儿, oo=哦. Key pairs
+   * whose final never occurs in that position (e.g. oc, os, ow) expand
+   * to bare glide finals ("iao", "ong", "ua") that match no syllable and
+   * simply produce no candidates.
    */
   public static final Scheme MICROSOFT = new TableScheme(
     new String[]{
@@ -97,42 +127,54 @@ public final class PinyinSchemes
       key = Character.toLowerCase(key);
       String base = _finals.get(key);
       if (base == null) return null;
-      boolean zero = (initial == null || initial.length() == 0);
-      boolean labial = is_labial(initial);
-      boolean dental = is_dental(initial);
-      boolean palatal = is_palatal(initial);
+      String init = initial == null ? "" : initial;
       switch (key)
       {
-        // D: "iang" after j,q,x,n,l; "uang" otherwise (incl. labials, zero)
-        case 'd': return (palatal || dental) ? "iang" : "uang";
-        // W: "ia" after j,q,x (palatals); "ua" otherwise
-        case 'w': return palatal ? "ia" : "ua";
-        // S: "ong" normally; "iong" after zero-initial
-        case 's': return zero ? "iong" : "ong";
-        // R: "uan" normally; "er" after zero-initial
-        case 'r': return zero ? "er" : "uan";
-        // O: "uo" normally; "o" after labials and zero-initial
-        case 'o': return (labial || zero) ? "o" : "uo";
-        // V: "ui" normally; "ü"(written "v") after n,l
-        case 'v': return dental ? "v" : "ui";
+        // D: "iang" after j,q,x,n,l; "uang" otherwise
+        case 'd': return (is_palatal(init) || is_dental(init))
+            ? "iang" : "uang";
+        // W: "ia" after j,q,x,l,d; "ua" otherwise
+        case 'w': return (is_palatal(init) || init.equals("l")
+            || init.equals("d")) ? "ia" : "ua";
+        // S: "iong" after j,q,x; "ong" otherwise
+        case 's': return is_palatal(init) ? "iong" : "ong";
+        // R: "er" after zero-initial; "uan" otherwise
+        case 'r': return init.isEmpty() ? "er" : "uan";
+        // O: "o" after labials, w, y and zero-initial; "uo" otherwise
+        case 'o': return (is_labial(init) || init.equals("w")
+            || init.equals("y") || init.isEmpty()) ? "o" : "uo";
+        // T: "üe" written "ve" after n,l; "ue" otherwise
+        case 't': return is_dental(init) ? "ve" : "ue";
+        // V: "üe" written "ve" after n,l; "ue" after j,q,x,y;
+        //    "ui" otherwise
+        case 'v':
+          if (is_dental(init)) return "ve";
+          if (is_palatal(init) || init.equals("y")) return "ue";
+          return "ui";
+        // Y: "ü" written "v" after n,l; written "u" after j,q,x,y;
+        //    "uai" otherwise
+        case 'y':
+          if (is_dental(init)) return "v";
+          if (is_palatal(init) || init.equals("y")) return "u";
+          return "uai";
         default:  return base;
       }
     }
 
     private boolean is_labial(String i)
     {
-      return i != null && (i.equals("b") || i.equals("p")
-          || i.equals("m") || i.equals("f"));
+      return i.equals("b") || i.equals("p")
+          || i.equals("m") || i.equals("f");
     }
     private boolean is_dental(String i)
     {
-      return i != null && (i.equals("n") || i.equals("l"));
+      return i.equals("n") || i.equals("l");
     }
-    /** j, q, x — the palatals. Used for D key's iang/uang and W key's ia/ua splits. */
+    /** j, q, x — the palatals. */
     private boolean is_palatal(String i)
     {
-      return i != null && (i.equals("j") || i.equals("q")
-          || i.equals("x"));
+      return i.equals("j") || i.equals("q")
+          || i.equals("x");
     }
   };
 }
