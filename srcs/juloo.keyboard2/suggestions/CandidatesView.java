@@ -205,11 +205,18 @@ public class CandidatesView extends LinearLayout
     update_visibility();
   }
 
-  /** Hide the bar entirely when it has nothing to display — an empty bar
-      would otherwise sit between the app and the keyboard taking a row of
-      height. The container is bottom-anchored, so when the first candidate
-      brings the bar back the keyboard keys themselves never move; only the
-      app content above shifts, once per composition. */
+  /** Whether the bar may hide itself while empty. Only the floating keyboard
+      does that: it doesn't reach the bottom of the screen, so shrinking to
+      nothing and growing back costs nothing. A docked keyboard keeps the
+      bar's row reserved instead — the keyboard is bottom-anchored, so
+      resizing per composition makes it jump, and the shrunk state overlaps
+      the system's input-method-switcher icon drawn at the bottom. */
+  boolean should_auto_hide()
+  {
+    Config cfg = Config.globalConfig();
+    return cfg != null && cfg.floating_keyboard_active;
+  }
+
   void update_visibility()
   {
     boolean has_content =
@@ -221,7 +228,7 @@ public class CandidatesView extends LinearLayout
         && _pinyin_scroll.getVisibility() == View.VISIBLE);
     for (int i = 0; !has_content && i < _item_views.length; i++)
       has_content = _item_views[i].getVisibility() == View.VISIBLE;
-    int visibility = (_show_allowed && has_content)
+    int visibility = (_show_allowed && (!should_auto_hide() || has_content))
       ? View.VISIBLE : View.GONE;
     if (visibility != getVisibility())
       setVisibility(visibility);
