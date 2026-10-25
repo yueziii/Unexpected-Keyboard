@@ -117,7 +117,9 @@ public class CandidatesView extends LinearLayout
     update_visibility();
   }
 
-  /** Render the pinyin preview label and the scrollable candidate strip. */
+  /** Render the pinyin preview label and the scrollable candidate strip.
+      The preview is hidden in prediction (联想) mode, where only the
+      candidate words are shown. */
   void show_pinyin(Suggestions s)
   {
     // Hide English-mode fixed slots.
@@ -129,10 +131,14 @@ public class CandidatesView extends LinearLayout
     // Preview label.
     if (_pinyin_preview_view != null)
     {
-      _pinyin_preview_view.setVisibility(View.VISIBLE);
-      _pinyin_preview_view.setText(s.pinyin_preview != null
-          ? s.pinyin_preview : "");
-      apply_text_size(_pinyin_preview_view);
+      if (s.pinyin_preview != null)
+      {
+        _pinyin_preview_view.setVisibility(View.VISIBLE);
+        _pinyin_preview_view.setText(s.pinyin_preview);
+        apply_text_size(_pinyin_preview_view);
+      }
+      else
+        _pinyin_preview_view.setVisibility(View.GONE);
     }
     if (_pinyin_scroll != null)
       _pinyin_scroll.setVisibility(View.VISIBLE);
@@ -254,6 +260,26 @@ public class CandidatesView extends LinearLayout
               if (cfg != null && cfg.handler != null)
                 cfg.handler.suggestion_entered(sug.pinyin_candidates.get(idx));
             }
+          }
+        });
+    // Long-press forgets what was learned about the word (usage count,
+    // custom word, prediction pairs), like mainstream IMEs.
+    v.setOnLongClickListener(new View.OnLongClickListener()
+        {
+          @Override
+          public boolean onLongClick(View _v)
+          {
+            Suggestions sug = _last_suggestions;
+            if (sug != null && idx < sug.pinyin_candidates.size())
+            {
+              Config cfg = Config.globalConfig();
+              if (cfg != null && cfg.handler != null)
+              {
+                cfg.handler.suggestion_removed(sug.pinyin_candidates.get(idx));
+                return true;
+              }
+            }
+            return false;
           }
         });
     return v;

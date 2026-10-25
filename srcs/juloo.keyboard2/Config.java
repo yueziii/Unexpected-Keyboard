@@ -447,6 +447,9 @@ public final class Config
     public void key_up(KeyValue value, Pointers.Modifiers mods);
     public void mods_changed(Pointers.Modifiers mods);
     public void suggestion_entered(String text);
+    /** The user long-pressed a candidate: forget what was learned about
+        the word and refresh the candidates. */
+    public void suggestion_removed(String text);
   }
 
   /** Config migrations. */

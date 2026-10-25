@@ -17,6 +17,10 @@
     <CheckBoxPreference android:key="suggestions" android:title="@string/pref_suggestions_title" android:summary="@string/pref_suggestions_summary" android:defaultValue="true"/>
     <CheckBoxPreference android:key="space_bar_auto_complete" android:title="@string/pref_space_bar_auto_complete_title" android:summary="@string/pref_space_bar_auto_complete_summary" android:defaultValue="false"/>
     <ListPreference android:key="pinyin_scheme" android:title="@string/pref_pinyin_scheme_title" android:summary="%s" android:defaultValue="full" android:entries="@array/pref_pinyin_scheme_entries" android:entryValues="@array/pref_pinyin_scheme_values"/>
+    <CheckBoxPreference android:key="pinyin_prediction" android:title="@string/pref_pinyin_prediction_title" android:summary="@string/pref_pinyin_prediction_summary" android:defaultValue="true"/>
+    <CheckBoxPreference android:key="pinyin_abbrev" android:title="@string/pref_pinyin_abbrev_title" android:summary="@string/pref_pinyin_abbrev_summary" android:defaultValue="true"/>
+    <MultiSelectListPreference android:key="pinyin_fuzzy" android:title="@string/pref_pinyin_fuzzy_title" android:summary="@string/pref_pinyin_fuzzy_summary" android:entries="@array/pref_pinyin_fuzzy_entries" android:entryValues="@array/pref_pinyin_fuzzy_values" android:defaultValue="@array/empty_string_array"/>
+    <Preference android:key="pinyin_clear_user_dict" android:title="@string/pref_pinyin_clear_user_dict_title" android:summary="@string/pref_pinyin_clear_user_dict_summary"/>
     <ListPreference android:key="pinyin_dict_pack" android:title="@string/pref_pinyin_dict_pack_title" android:summary="%s" android:defaultValue="builtin"/>
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_typing">

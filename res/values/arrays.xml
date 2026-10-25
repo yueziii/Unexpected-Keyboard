@@ -160,4 +160,31 @@
     <item>@string/pref_pinyin_scheme_full</item>
     <item>@string/pref_pinyin_scheme_double</item>
   </string-array>
+  <!-- 模糊音 groups; values must match PinyinData.FUZZY_RULES. -->
+  <string-array name="pref_pinyin_fuzzy_values">
+    <item>z_zh</item>
+    <item>c_ch</item>
+    <item>s_sh</item>
+    <item>n_l</item>
+    <item>f_h</item>
+    <item>an_ang</item>
+    <item>en_eng</item>
+    <item>in_ing</item>
+    <item>ian_iang</item>
+    <item>uan_uang</item>
+  </string-array>
+  <string-array name="pref_pinyin_fuzzy_entries">
+    <item>z ⟷ zh</item>
+    <item>c ⟷ ch</item>
+    <item>s ⟷ sh</item>
+    <item>n ⟷ l</item>
+    <item>f ⟷ h</item>
+    <item>an ⟷ ang</item>
+    <item>en ⟷ eng</item>
+    <item>in ⟷ ing</item>
+    <item>ian ⟷ iang</item>
+    <item>uan ⟷ uang</item>
+  </string-array>
+  <string-array name="empty_string_array">
+  </string-array>
 </resources>

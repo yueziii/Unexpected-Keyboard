@@ -99,6 +99,22 @@ public final class Suggestions
     _callback.set_suggestions(this);
   }
 
+  /** Show the next-word predictions (联想) after a commit: the candidates
+      strip without the pinyin preview, since nothing is being composed.
+      Tapping a prediction goes through [suggestion_entered] like any other
+      candidate. */
+  public void pinyin_prediction(List<String> words)
+  {
+    pinyin_preview = null;
+    pinyin_candidates.clear();
+    pinyin_candidates.addAll(words);
+    count = 0;
+    for (int i = 0; i < MAX_COUNT; i++)
+      suggestions[i] = null;
+    emoji_suggestion = null;
+    _callback.set_suggestions(this);
+  }
+
   public void clear()
   {
     count = 0;

@@ -19,6 +19,7 @@ import java.util.Set;
 import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.pinyin.PinyinData;
 import juloo.keyboard2.pinyin.PinyinInput;
+import juloo.keyboard2.pinyin.PinyinPredictor;
 import juloo.keyboard2.pinyin.PinyinSchemes;
 import juloo.keyboard2.pinyin.PinyinUserDict;
 
@@ -63,6 +64,12 @@ public final class KeyEventHandler
   /** Remember the action that was handled. This is used by autocorrect. */
   LastAction _last_action = null;
   LastAction _next_last_action = null;
+  /** Pinyin prediction (联想) state: the words currently shown after a
+      commit, or null when the bar is not predicting. Only set while the
+      pinyin buffer is empty. */
+  List<String> _pinyin_predictions = null;
+  /** Whether the next-word prediction setting is enabled. */
+  boolean _pinyin_prediction = false;
 
   public KeyEventHandler(IReceiver recv, Suggestions sg)
   {
@@ -87,6 +94,8 @@ public final class KeyEventHandler
     _space_bar_auto_complete = conf.space_bar_auto_complete;
     _keyevent_compat = conf.keyevent_compat;
     _last_action = null;
+    _pinyin_prediction = conf.pinyin_prediction;
+    _pinyin_predictions = null;
     // Initialize pinyin mode if enabled in the config
     PinyinData.set_fuzzy(conf.pinyin_fuzzy);
     if (conf.pinyin_enabled)
@@ -143,6 +152,11 @@ public final class KeyEventHandler
   {
     _autocap.selection_updated(oldSelStart, newSelStart);
     _typedword.selection_updated(oldSelStart, newSelStart, newSelEnd);
+    // Note: cursor moves do not clear the pinyin predictions here —
+    // onUpdateSelection also fires asynchronously after every commitText,
+    // which would clear freshly published predictions. The prediction
+    // state is cleared by the key paths instead (letters, backspace,
+    // punctuation, space, flush).
   }
 
   /** A key is being pressed. There will not necessarily be a corresponding
@@ -197,6 +211,9 @@ public final class KeyEventHandler
         char lower = Character.toLowerCase(ch);
         if (_pinyin != null && lower >= 'a' && lower <= 'z' && ch == lower)
         {
+          // Typing starts a new composition: any predictions shown are
+          // stale.
+          _pinyin_predictions = null;
           _pinyin.key_typed(lower);
           _pinyin.query_candidates();
           update_pinyin_composing();
@@ -231,6 +248,16 @@ public final class KeyEventHandler
           commit_pinyin_raw();
           send_text(String.valueOf(ch));
         }
+        else if (_pinyin != null && ch >= '1' && ch <= '9'
+            && _pinyin_predictions != null)
+        {
+          // Digits select a prediction, like in the composing state.
+          int idx = ch - '1';
+          if (idx < _pinyin_predictions.size())
+            suggestion_entered(_pinyin_predictions.get(idx));
+          else
+            send_text(String.valueOf(ch));
+        }
         else if (_pinyin != null && _pinyin.is_active())
         {
           // Punctuation while composing: commit the best candidate, then
@@ -241,6 +268,7 @@ public final class KeyEventHandler
         else if (_pinyin != null)
         {
           // Chinese mode, idle: punctuation produces full-width marks.
+          clear_pinyin_predictions();
           send_text(chinese_punctuation(ch));
         }
         else
@@ -267,7 +295,10 @@ public final class KeyEventHandler
             send_text(chinese_punctuation(sch));
           }
           else
+          {
+            clear_pinyin_predictions();
             send_text(chinese_punctuation(sch));
+          }
         }
         else
         {
@@ -332,11 +363,33 @@ public final class KeyEventHandler
   @Override
   public void suggestion_entered(String text)
   {
+    if (_pinyin_predictions != null)
+    {
+      // Predictions are shown: a tap commits the word and chains the
+      // prediction. Anything else (stale view) just clears them.
+      if (_pinyin != null && !_pinyin.is_active()
+          && _pinyin_predictions.contains(text))
+      {
+        InputConnection conn = _recv.getCurrentInputConnection();
+        if (conn != null)
+          conn.commitText(text, 1);
+        String prev = _pinyin.context_word();
+        if (prev != null)
+          PinyinUserDict.record_pair(prev, text);
+        PinyinUserDict.record(text);
+        _pinyin.set_context_word(text);
+        publish_pinyin_predictions();
+        _next_last_action = LastAction.OTHER;
+        return;
+      }
+      clear_pinyin_predictions();
+    }
     if (_pinyin != null && _pinyin.is_active())
     {
       InputConnection conn = _recv.getCurrentInputConnection();
       // Accept the candidate: it consumes its keystrokes, the rest of the
       // buffer stays for continued input (sentence input).
+      String prev_ctx = _pinyin.context_word();
       int consumed = _pinyin.accept_candidate(text);
       if (consumed < 0)
       {
@@ -350,8 +403,15 @@ public final class KeyEventHandler
         // Committing the candidate replaces the current composing text
         conn.commitText(text, 1);
         conn.endBatchEdit();
-        // Learn the committed word so it ranks first in future queries
-        PinyinUserDict.record(text);
+        // Learn the committed word so it ranks first in future queries;
+        // non-dictionary phrases keep their pinyin as custom words
+        // (自动造词).
+        PinyinUserDict.record(text,
+            PinyinData.get().lookup_word_id(text) < 0
+              ? _pinyin.last_accepted_pinyin() : null);
+        // Learn the word pair for the next-word prediction (联想).
+        if (prev_ctx != null && text.length() <= 8)
+          PinyinUserDict.record_pair(prev_ctx, text);
       }
       boolean has_remaining = _pinyin.is_active();
       if (has_remaining)
@@ -361,8 +421,8 @@ public final class KeyEventHandler
       }
       else
       {
-        _suggestions.clear();
-        _recv.set_suggestions(_suggestions);
+        // Buffer emptied: predict the next word like mainstream IMEs.
+        publish_pinyin_predictions();
       }
       _next_last_action = LastAction.OTHER;
       return;
@@ -373,6 +433,61 @@ public final class KeyEventHandler
     last_replaced_word = old;
     last_replacement_word_len = text.length();
     _next_last_action = LastAction.SUGGESTION_ENTERED;
+  }
+
+  /** Show the next-word predictions (联想) for the current context in the
+      candidates bar, or clear the bar when there are none or the setting
+      is off. */
+  void publish_pinyin_predictions()
+  {
+    _pinyin_predictions = null;
+    if (!_pinyin_prediction || _pinyin == null)
+    {
+      _suggestions.clear();
+      _recv.set_suggestions(_suggestions);
+      return;
+    }
+    List<String> preds = PinyinPredictor.predict(PinyinData.get(),
+        _pinyin.context_word(), PinyinUserDict.pairs());
+    if (preds.isEmpty())
+    {
+      _suggestions.clear();
+      _recv.set_suggestions(_suggestions);
+      return;
+    }
+    _pinyin_predictions = preds;
+    _suggestions.pinyin_prediction(preds);
+  }
+
+  /** Drop the predictions from the bar (any key the IME does not handle as
+      a prediction tap). */
+  void clear_pinyin_predictions()
+  {
+    if (_pinyin_predictions == null)
+      return;
+    _pinyin_predictions = null;
+    _suggestions.clear();
+    _recv.set_suggestions(_suggestions);
+  }
+
+  /** A pinyin candidate was long-pressed: forget what was learned about
+      the word (usage count, custom word, prediction pairs) and refresh
+      the candidates. Unknown dictionary words are unaffected. */
+  @Override
+  public void suggestion_removed(String text)
+  {
+    if (_pinyin == null || text == null || text.isEmpty())
+      return;
+    PinyinUserDict.remove(text);
+    if (_pinyin.is_active())
+    {
+      _pinyin.query_candidates();
+      update_pinyin_composing();
+    }
+    else
+    {
+      clear_pinyin_predictions();
+    }
   }
 
   /** Commit the first (best) candidate, if any. Used before punctuation and
@@ -396,8 +511,7 @@ public final class KeyEventHandler
     if (conn != null)
       conn.commitText(_pinyin.get_buffer(), 1);
     _pinyin.reset();
-    _suggestions.clear();
-    _recv.set_suggestions(_suggestions);
+    clear_pinyin_predictions();
   }
 
   /** The full-width form of a punctuation character in Chinese mode.
@@ -922,6 +1036,7 @@ public final class KeyEventHandler
       conn.finishComposingText();
     }
     _pinyin.reset();
+    _pinyin_predictions = null;
     _suggestions.clear();
     _recv.set_suggestions(_suggestions);
   }
@@ -961,6 +1076,12 @@ public final class KeyEventHandler
       accept_first_candidate();
       return;
     }
+    if (_pinyin_predictions != null && !_pinyin_predictions.isEmpty())
+    {
+      // Space accepts the first prediction, like mainstream IMEs.
+      suggestion_entered(_pinyin_predictions.get(0));
+      return;
+    }
     if (_space_bar_auto_complete && _suggestions.count > 0
         && !_typedword.is_selection_not_empty()
         && _typedword.cursor_relative() == 0)
@@ -991,6 +1112,12 @@ public final class KeyEventHandler
         _recv.set_suggestions(_suggestions);
       }
       return;
+    }
+    if (_pinyin_predictions != null)
+    {
+      // Predictions are stale once the user edits the text; backspace
+      // proceeds as a normal delete.
+      clear_pinyin_predictions();
     }
     if (_last_action == LastAction.SUGGESTION_ENTERED
         && last_replaced_word != null)
