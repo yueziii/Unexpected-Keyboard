@@ -413,8 +413,9 @@ public final class Config
 
   final boolean get_split_layout()
   {
-    switch (_prefs.getString("split_layout", "wide"))
+    switch (_prefs.getString("split_layout", "unfolded"))
     {
+      case "unfolded": return foldable_unfolded;
       case "wide": return wide_screen;
       case "landscape": return orientation_landscape;
       default: return false;

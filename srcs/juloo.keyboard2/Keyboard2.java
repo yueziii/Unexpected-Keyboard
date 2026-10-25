@@ -151,7 +151,13 @@ public class Keyboard2 extends InputMethodService
     create_keyboard_view();
     ClipboardHistoryService.on_startup(this, _keyeventhandler);
     _floating_manager = new FloatingKeyboardManager(this, _config);
-    _foldStateTracker.setChangedCallback(() -> { refresh_config(); });
+    _foldStateTracker.setChangedCallback(() -> {
+      refresh_config();
+      // Re-generate the layout data so the split/merged switch takes effect
+      // immediately instead of waiting for the next input view restart.
+      _currentSpecialLayout = refresh_special_layout();
+      _keyboard_layout_view.setKeyboard(current_layout());
+    });
   }
 
   @Override
@@ -246,8 +252,7 @@ public class Keyboard2 extends InputMethodService
     // English mode follows the system/user setting.
     boolean should_show =
       (_config.suggestions_enabled
-       && _config.editor_config.should_show_candidates_view
-       && !_config.split_layout)
+       && _config.editor_config.should_show_candidates_view)
       || _config.pinyin_enabled;
     if (should_show)
       _candidates_view.refresh_config(_config);

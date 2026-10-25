@@ -187,6 +187,7 @@
     <string name="pref_keyevent_compat_title">Key event compatibility mode</string>
     <string name="pref_keyevent_compat_summary">Send shortcut keys (Ctrl, Alt, Win and their combos) like a physical keyboard so remote desktop apps (UU Remote, ToDesk, Sunlogin) forward them. Enter, Backspace and other plain keys are not affected.</string>
     <string name="pref_split_layout">Split layout</string>
+    <string name="pref_split_layout_unfolded">When the foldable is unfolded</string>
     <string name="pref_split_layout_never">Never</string>
     <string name="pref_split_layout_landscape">In landscape orientation</string>
     <string name="pref_split_layout_wide">On wide screens</string>

@@ -28,6 +28,11 @@
     <string name="pref_extra_keys_title">选择要显示的按键</string>
     <string name="pref_extra_keys_custom">添加自定义按键</string>
     <string name="pref_extra_keys_internal">选择要添加到键盘的按键</string>
+    <string name="pref_split_layout">分离布局</string>
+    <string name="pref_split_layout_unfolded">折叠屏展开时</string>
+    <string name="pref_split_layout_wide">宽屏时</string>
+    <string name="pref_split_layout_landscape">横屏时</string>
+    <string name="pref_split_layout_never">从不</string>
     <string name="pref_pinyin_scheme_title">拼音输入方案</string>
     <string name="pref_pinyin_scheme_full">全拼</string>
     <string name="pref_pinyin_scheme_double">微软双拼</string>
