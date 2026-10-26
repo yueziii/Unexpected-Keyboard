@@ -15,9 +15,14 @@ chinese-poetry). Format: pinyin<TAB>word<TAB>freq, plus optional
 '@abbrev<TAB>letters<TAB>word' lines mapping a latin abbreviation to a word
 (e.g. yyds -> 永远的神).
 
-Bigram source: a word-segmented corpus (People's Daily 1998-01,
-scripts/data/ChineseCorpus199801.txt, GBK encoded, token/tag lines).
-Adjacent token pairs where both tokens are dictionary words are counted.
+Bigram sources, counted into one model (adjacent pairs where both tokens
+are dictionary words; non-Han tokens and unknown words break the chain):
+  1. scripts/data/ChineseCorpus199801.txt — pre-segmented People's Daily
+     1998-01 (GBK, token/tag lines), the segmented seed.
+  2. scripts/data/modern/modern_sentences.txt — raw modern Chinese, one
+     sentence per line (THUCNews 2005-2011 news + a zhwiki dump head, see
+     extract_modern_corpus.py), segmented with the vendored jieba.
+
 The IME adds a transition bonus for observed pairs when converting whole
 sentences, which is what disambiguates e.g. 这是/只是, 天气/添气.
 
@@ -67,12 +72,21 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DICT_TXT = os.path.join(REPO, 'scripts', 'data', 'pinyin_dict.txt')
 CORPUS = os.path.join(REPO, 'scripts', 'data', 'ChineseCorpus199801.txt')
+MODERN_CORPUS = os.path.join(REPO, 'scripts', 'data', 'modern',
+                             'modern_sentences.txt')
+JIEBA_DIR = os.path.join(REPO, 'scripts', 'data', 'jieba')
 OUT_DICT = os.path.join(REPO, 'assets', 'py_dict.bin')
 OUT_BIGRAM = os.path.join(REPO, 'assets', 'py_bigram.bin')
 
 MAX_WORD_LEN = 12
-MIN_BIGRAM_COUNT = 4         # below this, co-occurrence is noise
-MAX_PAIRS = 600000          # ~6 MB asset
+MIN_BIGRAM_COUNT = 1          # count-1 pairs are weak but the engine's
+                              # transition bonus is capped, so coverage of
+                              # everyday collocations beats the noise risk
+MAX_PAIRS = 1000000         # ~10 MB asset; with the modern corpus the
+                              # count>=4 pairs alone approach this
+COMMON_FREQ = 2000           # word frequency above which both words of a
+                              # low-count pair must rank for the pair to
+                              # fill the remaining slots (see select_pairs)
 # Abbrev (简拼) index limits. Short words keep every distinct initials
 # variant (ambiguous splits like 西安 = xian/xi'an matter); long phrases
 # only the canonical ones, or poem lines and xiehouyu would blow the index
@@ -322,12 +336,53 @@ def count_bigrams(word_id):
                 prev = wid
     return pairs, n_tokens
 
-def write_bigram_bin(words, pairs):
-    kept = [(p, c) for p, c in pairs.items() if c >= MIN_BIGRAM_COUNT]
+def count_bigrams_modern(word_id):
+    """Count adjacent word pairs in the modern raw-text corpus, segmented
+    with the vendored jieba. One sentence per line; jieba tokens that are
+    not dictionary words (numbers, names, rare words) break the chain, like
+    the punctuation tokens of the segmented corpus."""
+    sys.path.insert(0, JIEBA_DIR)
+    import jieba
+    jieba.initialize()
+    pairs = collections.Counter()
+    n_tokens = 0
+    with open(MODERN_CORPUS, encoding='utf-8') as f:
+        for line in f:
+            prev = None
+            for tok in jieba.cut(line):
+                wid = word_id.get(tok)
+                if wid is None:
+                    prev = None
+                    continue
+                n_tokens += 1
+                if prev is not None:
+                    pairs[(prev, wid)] += 1
+                prev = wid
+    return pairs, n_tokens
+
+def select_pairs(pairs, word_freq):
+    """Choose the pairs to ship. A bare top-by-count cut drops the count
+    1..3 pairs of common words (学习->编程) to corpus-long-tail noise;
+    instead keep every count>=4 pair, then fill the remaining slots with
+    low-count pairs whose both words are common (word_freq >= COMMON_FREQ),
+    which carry real collocations the engine can still use as a weak
+    bonus."""
+    kept = [(p, c) for p, c in pairs.items() if c >= 4]
     kept.sort(key=lambda pc: (-pc[1], pc[0]))
     if len(kept) > MAX_PAIRS:
         kept = kept[:MAX_PAIRS]
-    kept.sort(key=lambda pc: pc[0])
+    elif len(kept) < MAX_PAIRS:
+        rest = [(p, c) for p, c in pairs.items()
+                if MIN_BIGRAM_COUNT <= c < 4
+                and word_freq[p[0]] >= COMMON_FREQ
+                and word_freq[p[1]] >= COMMON_FREQ]
+        rest.sort(key=lambda pc: (-pc[1], pc[0]))
+        kept += rest[:MAX_PAIRS - len(kept)]
+    return kept
+
+def write_bigram_bin(words, kept):
+    """kept: [((prev_id, cur_id), count)] selected by select_pairs."""
+    kept = sorted(kept, key=lambda pc: pc[0])
 
     body = bytearray()
     offsets = []
@@ -357,8 +412,22 @@ def main():
     if not os.path.exists(CORPUS):
         print('Corpus missing (%s), skipping bigram.' % CORPUS)
         return
-    pairs, n_tokens = count_bigrams(load_word_ids(words))
-    n = write_bigram_bin(words, pairs)
+    word_id = load_word_ids(words)
+    pairs, n_tokens = count_bigrams(word_id)
+    print('segmented corpus tokens: %d, pairs: %d' % (n_tokens, len(pairs)))
+    if os.path.exists(MODERN_CORPUS):
+        pairs_modern, n_tokens_modern = count_bigrams_modern(word_id)
+        pairs.update(pairs_modern)
+        n_tokens += n_tokens_modern
+        print('modern corpus tokens: %d, pairs: %d (total distinct: %d)' % (
+            n_tokens_modern, len(pairs_modern), len(pairs)))
+    freq_by_word = {}
+    for (_py, w), f in entries.items():
+        if f > freq_by_word.get(w, 0):
+            freq_by_word[w] = f
+    word_freq = [freq_by_word.get(w, 0) for w in words]
+    kept = select_pairs(pairs, word_freq)
+    n = write_bigram_bin(words, kept)
     print('corpus tokens: %d, bigram pairs kept: %d -> %s (%.1f MB)' % (
         n_tokens, n, OUT_BIGRAM, os.path.getsize(OUT_BIGRAM) / 1e6))
 

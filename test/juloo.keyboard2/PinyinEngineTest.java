@@ -2,6 +2,7 @@ package juloo.keyboard2;
 
 import juloo.keyboard2.pinyin.PinyinData;
 import juloo.keyboard2.pinyin.PinyinEngine;
+import juloo.keyboard2.pinyin.PinyinHotwords;
 import java.util.List;
 import org.junit.Test;
 import org.junit.Before;
@@ -25,7 +26,8 @@ public class PinyinEngineTest
 
   List<PinyinEngine.Candidate> decode(String letters)
   {
-    return PinyinEngine.decode(_data, letters, null, null, null, false);
+    return PinyinEngine.decode(_data, null, letters, null, null, null,
+        false);
   }
 
   static List<String> texts(List<PinyinEngine.Candidate> cands)
@@ -93,6 +95,53 @@ public class PinyinEngineTest
   }
 
   @Test
+  public void single_syllable_ranks_characters_first()
+  {
+    // Like mainstream IMEs, a single-syllable input lists its characters
+    // first; the multi-character word sharing the whole syllable (西安)
+    // stays reachable but below them.
+    List<PinyinEngine.Candidate> c = decode("xian");
+    assertFalse(c.isEmpty());
+    assertEquals("a character first", 1, c.get(0).text.length());
+    List<String> t = texts(c);
+    assertTrue("西安 still reachable: " + t, t.contains("西安"));
+    assertNotEquals("西安", t.get(0));
+  }
+
+  @Test
+  public void sentence_candidates_carry_tail_word()
+  {
+    // The tail word is what continues the bigram context after committing
+    // the sentence: 今天天气真好 ends on 真好, not on the whole sentence.
+    List<PinyinEngine.Candidate> c = decode("jintiantianqizhenhao");
+    assertFalse(c.isEmpty());
+    assertEquals("今天天气真好", c.get(0).text);
+    assertEquals("真好", c.get(0).tail_word);
+  }
+
+  @Test
+  public void first_segment_alternatives_offered_for_long_input()
+  {
+    // 断句提示: beyond the whole-sentence candidates, the alternatives for
+    // the first syllable (今) and the first word (今天) must be committable
+    // on their own, leaving the rest of the buffer pending.
+    List<PinyinEngine.Candidate> c = decode("jintiantianqizhenhao");
+    boolean has_first_syllable = false;
+    boolean has_first_word = false;
+    for (PinyinEngine.Candidate cand : c)
+    {
+      if (cand.letters_consumed == 3)
+        has_first_syllable = true;
+      if (cand.letters_consumed == 7)
+        has_first_word = true;
+    }
+    assertTrue("first-syllable alternatives offered: " + texts(c),
+        has_first_syllable);
+    assertTrue("first-word candidates offered: " + texts(c),
+        has_first_word);
+  }
+
+  @Test
   public void partial_trailing_syllable()
   {
     // "nihaox": complete part nihao converts; x is still being typed.
@@ -142,15 +191,59 @@ public class PinyinEngineTest
     java.util.Map<String, Integer> users =
       new java.util.HashMap<String, Integer>();
     users.put("泥", 50);
-    List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, "ni", null,
+    List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, null, "ni", null,
         users, null, false);
     assertEquals("泥", c.get(0).text);
   }
 
   @Test
+  public void committed_word_ranks_first()
+  {
+    // One commit is enough: the word the user committed before leads the
+    // candidates for its own pinyin, above the more frequent dictionary
+    // words (时间 is ~300x more frequent than 尸检).
+    java.util.Map<String, Integer> users =
+      new java.util.HashMap<String, Integer>();
+    users.put("尸检", 1);
+    List<String> t = texts(PinyinEngine.decode(_data, null, "shijian", null,
+          users, null, false));
+    assertTrue("尸检 offered: " + t, t.contains("尸检"));
+    assertEquals("尸检 first: " + t, "尸检", t.get(0));
+  }
+
+  @Test
+  public void most_used_committed_word_leads()
+  {
+    // Both committed: the more used one ranks first.
+    java.util.Map<String, Integer> users =
+      new java.util.HashMap<String, Integer>();
+    users.put("事件", 5);
+    users.put("实践", 2);
+    List<String> t = texts(PinyinEngine.decode(_data, null, "shijian", null,
+          users, null, false));
+    assertEquals("事件 first: " + t, "事件", t.get(0));
+    assertTrue("实践 second: " + t, "实践".equals(t.get(1)));
+  }
+
+  @Test
+  public void committed_word_does_not_hijack_longer_input()
+  {
+    // A heavily used word (今天) must not displace the whole-sentence
+    // conversion for a longer input: only candidates covering the same
+    // letters as the head are promoted.
+    java.util.Map<String, Integer> users =
+      new java.util.HashMap<String, Integer>();
+    users.put("今天", 100);
+    List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, null,
+        "jintiantianqihenhao", null, users, null, false);
+    assertEquals("今天天气很好", c.get(0).text);
+    assertEquals(19, c.get(0).letters_consumed);
+  }
+
+  @Test
   public void context_word_biases_first_word()
   {
-    List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, "shi", "他",
+    List<PinyinEngine.Candidate> c = PinyinEngine.decode(_data, null, "shi", "他",
         null, null, false);
     assertFalse(c.isEmpty());
   }
@@ -181,14 +274,14 @@ public class PinyinEngineTest
   {
     // "nh" parses as no syllable sequence; with abbrev enabled, the
     // initials of 你好 (and friends) become the candidates.
-    List<String> no_abbrev = texts(PinyinEngine.decode(_data, "nh", null,
+    List<String> no_abbrev = texts(PinyinEngine.decode(_data, null, "nh", null,
           null, null, false));
     assertTrue("no candidates without abbrev", no_abbrev.isEmpty());
-    List<String> t = texts(PinyinEngine.decode(_data, "nh", null, null,
+    List<String> t = texts(PinyinEngine.decode(_data, null, "nh", null, null,
           null, true));
     assertTrue("你好 via abbrev: " + t, t.contains("你好"));
     // Committing consumes the whole buffer.
-    for (PinyinEngine.Candidate c : PinyinEngine.decode(_data, "nh", null,
+    for (PinyinEngine.Candidate c : PinyinEngine.decode(_data, null, "nh", null,
           null, null, true))
       if (c.text.equals("你好"))
         assertEquals(2, c.letters_consumed);
@@ -198,7 +291,7 @@ public class PinyinEngineTest
   public void abbrev_latin_pairs()
   {
     // Curated abbreviation pairs from the buzzword list.
-    List<String> t = texts(PinyinEngine.decode(_data, "yyds", null, null,
+    List<String> t = texts(PinyinEngine.decode(_data, null, "yyds", null, null,
           null, true));
     assertTrue("永远的神 via yyds: " + t, t.contains("永远的神"));
   }
@@ -207,9 +300,36 @@ public class PinyinEngineTest
   public void full_pinyin_still_wins_over_abbrev()
   {
     // "nihao" is a full pinyin parse; abbrev must not displace 你好.
-    List<String> t = texts(PinyinEngine.decode(_data, "nihao", null, null,
-          null, true));
+    List<String> t = texts(PinyinEngine.decode(_data, null, "nihao", null,
+          null, null, true));
     assertEquals("你好", t.get(0));
+  }
+
+  // --- 云端热词 (hotword overlay) ---
+
+  @Test
+  public void hotword_overlay_surfaces_new_words() throws Exception
+  {
+    // A buzzword absent from the compiled dictionary: the overlay must
+    // make it decodable and rank it first for its pinyin.
+    PinyinHotwords hw = PinyinHotwords.parse(
+        "# test overlay\nxiandaikuaijie\t显代快街\t5000\n");
+    List<String> t = texts(PinyinEngine.decode(_data, hw,
+            "xiandaikuaijie", null, null, null, false));
+    assertFalse("hotword decodable: " + t, t.isEmpty());
+    assertEquals("显代快街", t.get(0));
+  }
+
+  @Test
+  public void hotword_abbreviations_surface() throws Exception
+  {
+    PinyinHotwords hw = PinyinHotwords.parse(
+        "# test overlay\nlaohuji\t老虎机\t5000\n@abbrev\tlhj\t老虎机\n");
+    // "lhj" parses as no syllable sequence; the overlay's abbreviation
+    // pair must appear among the candidates.
+    List<String> t = texts(PinyinEngine.decode(_data, hw, "lhj", null,
+          null, null, true));
+    assertTrue("老虎机 via lhj: " + t, t.contains("老虎机"));
   }
 
   // --- 自动造词 (custom user words) ---
@@ -223,9 +343,12 @@ public class PinyinEngineTest
     java.util.Map<String, Integer> users =
       new java.util.HashMap<String, Integer>();
     users.put("泥嚎", 3);
-    List<String> t = texts(PinyinEngine.decode(_data, "nihao", null, users,
+    List<String> t = texts(PinyinEngine.decode(_data, null, "nihao", null, users,
           pinyins, false));
+    // The custom word's synthetic frequency is above the dictionary scale,
+    // so it leads 你好 instead of tying with the top dictionary words.
     assertTrue("custom word 泥嚎 offered: " + t, t.contains("泥嚎"));
+    assertEquals("泥嚎 first: " + t, "泥嚎", t.get(0));
   }
 
   // --- long phrases (poem lines, proverbs) ---

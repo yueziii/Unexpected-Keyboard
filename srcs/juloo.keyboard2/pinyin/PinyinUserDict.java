@@ -3,7 +3,6 @@ package juloo.keyboard2.pinyin;
 import android.content.Context;
 import android.content.SharedPreferences;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +13,8 @@ import java.util.Map;
  * Three kinds of state are kept, all in one preferences file:
  *
  * - Word usage counts: word -> int. The engine boosts a candidate by
- *   USER_W * log(1 + count).
+ *   USER_W * log(1 + count) and ranks committed texts first among
+ *   same-coverage candidates (PinyinEngine.rank_by_user_usage).
  * - Custom words (自动造词): the pinyin of committed texts that are not
  *   dictionary words ("py:" + word -> pinyin). The engine surfaces them as
  *   candidates for that pinyin, ranked by their usage count.
@@ -301,36 +301,5 @@ public final class PinyinUserDict
       if (_prefs != null)
         _prefs.edit().remove(PAIR_PREFIX + min_prev + " " + min_cur).apply();
     }
-  }
-
-  /** Reorder [candidates] in place so that words the user committed before
-      come first, most used first. The remaining candidates keep their
-      original order, which is already frequency-ranked by the dictionary. */
-  public static void rank_by_user_usage(List<String> candidates)
-  {
-    if (_counts == null || _counts.isEmpty() || candidates.size() < 2)
-      return;
-    List<String> used = new ArrayList<String>();
-    List<String> rest = new ArrayList<String>();
-    for (String w : candidates)
-    {
-      if (count(w) > 0)
-        used.add(w);
-      else
-        rest.add(w);
-    }
-    if (used.isEmpty())
-      return;
-    java.util.Collections.sort(used, new Comparator<String>()
-    {
-      @Override
-      public int compare(String a, String b)
-      {
-        return count(b) - count(a);
-      }
-    });
-    candidates.clear();
-    candidates.addAll(used);
-    candidates.addAll(rest);
   }
 }

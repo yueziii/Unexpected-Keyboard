@@ -21,7 +21,7 @@
     <CheckBoxPreference android:key="pinyin_abbrev" android:title="@string/pref_pinyin_abbrev_title" android:summary="@string/pref_pinyin_abbrev_summary" android:defaultValue="true"/>
     <MultiSelectListPreference android:key="pinyin_fuzzy" android:title="@string/pref_pinyin_fuzzy_title" android:summary="@string/pref_pinyin_fuzzy_summary" android:entries="@array/pref_pinyin_fuzzy_entries" android:entryValues="@array/pref_pinyin_fuzzy_values" android:defaultValue="@array/empty_string_array"/>
     <Preference android:key="pinyin_clear_user_dict" android:title="@string/pref_pinyin_clear_user_dict_title" android:summary="@string/pref_pinyin_clear_user_dict_summary"/>
-    <ListPreference android:key="pinyin_dict_pack" android:title="@string/pref_pinyin_dict_pack_title" android:summary="%s" android:defaultValue="builtin"/>
+    <Preference android:key="pinyin_hotwords_update" android:title="@string/pref_pinyin_hotwords_title" android:summary="@string/pref_pinyin_hotwords_summary_builtin"/>
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_typing">
     <ListPreference android:key="swipe_dist" android:title="@string/pref_swipe_dist_title" android:summary="@string/pref_swipe_dist_summary" android:defaultValue="15" android:entries="@array/pref_swipe_dist_entries" android:entryValues="@array/pref_swipe_dist_values"/>

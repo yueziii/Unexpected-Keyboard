@@ -16,10 +16,14 @@ Corpora (clone into --data-dir; see download_pinyin_data.sh):
                                 force-included, see DOMAIN_WORDS)
   BYVoid/OpenCC                 traditional → simplified conversion
   pwxcoo/chinese-xinhua         成语 (with annotated pinyin) + 歇后语
-  chinese-poetry/chinese-poetry 蒙学 anthologies (唐诗三百首/千家诗/增广贤文)
-                                → famous-line segments, converted to simplified
+  chinese-poetry/chinese-poetry 蒙学 anthologies (唐诗三百首/千家诗/增广贤文/
+                                古文观止/幼学琼林/千字文) plus 宋词三百首,
+                                诗经 and 楚辞 → famous-line segments,
+                                converted to simplified
 
-Extra curated word lists live in scripts/data/extra/ (versioned in the repo):
+Extra curated word lists live in cloud/pinyin-dictionaries/wordlists/
+(versioned in the cloud dictionary repository, shared with the hotwords
+build):
   buzzwords.txt    网络热词, plus latin abbreviation pairs (yyds -> 永远的神)
   proverbs.txt     俗语谚语
   famous_lines.txt 诗词名句 beyond the anthologies
@@ -27,12 +31,17 @@ They are force-included at a tiered frequency (see *_FLOOR). Lines starting
 with "@abbrev" in the output map a latin abbreviation to a word for the
 abbreviated-pinyin (简拼) index built by gen_pinyin_bin.py.
 
-Frequencies from the different corpora are merged on a common scale using a
-logarithmic normalization (see normalize_freq), so words seen by several
-corpora get the maximum of their normalized scores and single characters do
-not automatically outrank common multi-character words.
+Frequencies from the different corpora are merged on a common scale by
+summing linearly normalized scores (see normalize_freq), so words seen by
+several corpora accumulate evidence and single characters do not
+automatically outrank common multi-character words.
 """
 import argparse, codecs, json, math, os, re, sys, unicodedata
+
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+# Curated wordlists shared with the cloud dictionary repository.
+EXTRA_DIR = os.path.join(SCRIPTS, os.pardir, 'cloud',
+                         'pinyin-dictionaries', 'wordlists')
 
 FREQ_SCALE = 1000000
 DEFAULT_MULTI_LIMIT = 90000
@@ -58,6 +67,15 @@ DOMAIN_FLOOR = 1000
 BUZZ_FLOOR = 5000
 IDIOM_FLOOR = 1000
 PHRASE_FLOOR = 800
+# Everyday words from the jieba corpus that the multi-char frequency cut
+# drops (mostly classical/literary vocabulary useful for poetry and prose
+# input). Added at a floor below the categories above, above the raw tail.
+JIEBA_EXTRA_MIN_FREQ = 100
+JIEBA_EXTRA_FLOOR = 600
+# jieba POS tags that are not worth adding: proper nouns (people/places/
+# works), letters, punctuation-like junk.
+JIEBA_EXTRA_SKIP_TAGS = set(
+    'nz ns nt nrt nr ng x g y o j e'.split())
 # Long phrases (poem lines, proverbs, xiehouyu) may be up to this many
 # characters; ordinary corpus words keep the 6-character cap.
 CATEGORY_MAX_LEN = 12
@@ -79,10 +97,12 @@ def is_han(word):
 
 def normalize_freq(freq, max_freq):
     """Linearly normalize a raw frequency onto [0, FREQ_SCALE]. A linear
-    scale preserves the orders of magnitude between common and rare words
-    (log-compression made nearly all words look equally frequent, which
-    broke sentence disambiguation). Words seen by several corpora get the
-    maximum of their normalized scores."""
+    scale preserves the orders of magnitude between common and rare words.
+    Corpora are merged by SUMMING the normalized scores (capped at
+    FREQ_SCALE): a word seen by several corpora accumulates evidence, which
+    keeps within-corpus frequency orders intact while a single corpus'
+    local artifact (jieba's document counts rank 散布 above 散步) can no
+    longer single-handedly invert the merged ranking."""
     if freq <= 0:
         return 0
     return int(round(FREQ_SCALE * float(freq) / max_freq))
@@ -242,29 +262,48 @@ class Corpora:
                         out.add(part)
         return sorted(out)
 
-    # ---- chinese-poetry 蒙学 anthologies: famous-line segments ----
+    # ---- chinese-poetry: famous-line segments from the anthologies ----
     def poetry_lines(self, trad_to_simp):
-        """Simplified segments (4..12 chars) of 唐诗三百首, 千家诗 and
-        增广贤文 lines, split on punctuation. 增广贤文 is the classic proverb
-        anthology, so it doubles as a 俗语 source."""
+        """Simplified segments (4..12 chars) of the poetry collections.
+        Two extractions per paragraph:
+          - each sentence (between 。！？；) with its inner punctuation
+            stripped, when it fits the length cap: famous lines span their
+            own caesuras, and 大江东去，浪淘尽 is typed as
+            dajiangdongqulangtaojin, never with a pause;
+          - the individual comma segments, for the longer sentences.
+        Sources: 蒙学/ (唐诗三百首, 千家诗, 增广贤文, 古文观止, 幼学琼林,
+        千字文) plus 宋词三百首, 诗经 and 楚辞 — the Song ci, Shijing and
+        Chuci are the main gaps beyond the Tang anthologies."""
         out = set()
-        for rel in ('tangshisanbaishou.json', 'qianjiashi.json',
-                    'zengguangxianwen.json'):
-            with open(self.path('chinese-poetry', '蒙学/' + rel),
-                      encoding='utf-8') as f:
+        for rel in ('蒙学/tangshisanbaishou.json', '蒙学/qianjiashi.json',
+                    '蒙学/zengguangxianwen.json', '蒙学/guwenguanzhi.json',
+                    '蒙学/youxueqionglin.json', '蒙学/qianziwen.json',
+                    os.path.join('宋词', '宋词三百首.json'),
+                    os.path.join('诗经', 'shijing.json'),
+                    os.path.join('楚辞', 'chuci.json')):
+            with open(self.path('chinese-poetry', rel), encoding='utf-8') as f:
                 doc = json.load(f)
             for para in poetry_paragraphs(doc):
+                para = trad_to_simp(para)
                 for part in re.split(r'[，。！？；、,.!?;:]', para):
-                    part = trad_to_simp(part.strip())
+                    part = part.strip()
                     if (MIN_POETRY_LEN <= len(part) <= CATEGORY_MAX_LEN
                             and is_han(part)):
                         out.add(part)
+                # Sentence-level merges across the caesuras.
+                for sent in re.split(r'[。！？；,.!?;]', para):
+                    sent = re.sub(r'[，、,:：“”‘’"\'《》()（）\s-]', '', sent)
+                    if (MIN_POETRY_LEN <= len(sent) <= CATEGORY_MAX_LEN
+                            and is_han(sent)):
+                        out.add(sent)
         return sorted(out)
 
-    # ---- curated extra word lists (versioned in the repo) ----
+    # ---- curated extra word lists (versioned in the cloud dictionary
+    # repository) ----
     def extra_lists(self):
-        """{filename: (words, [(abbrev, word)])} from scripts/data/extra/."""
-        extra_dir = os.path.join(self.data_dir, 'extra')
+        """{filename: (words, [(abbrev, word)])} from
+        cloud/pinyin-dictionaries/wordlists/."""
+        extra_dir = EXTRA_DIR
         out = {}
         for name in sorted(os.listdir(extra_dir)):
             if not name.endswith('.txt'):
@@ -341,6 +380,7 @@ class Corpora:
                     essay_freq[simp] = freq
 
         jieba_freq = {}
+        jieba_tags = {}
         jieba_geo_chars = set()
         with codecs.open(self.path('jieba', 'jieba/dict.txt'), 'r', 'utf-8') as f:
             for line in f:
@@ -356,6 +396,8 @@ class Corpora:
                     continue
                 if word not in jieba_freq or freq > jieba_freq[word]:
                     jieba_freq[word] = freq
+                    if len(parts) >= 3:
+                        jieba_tags[word] = parts[2]
                 if len(word) == 1 and len(parts) >= 3 and parts[2] == 'g':
                     # Geographic names (浠 from 浠水县 gazetteers): chars
                     # that are almost never typed standalone but carry huge
@@ -369,25 +411,29 @@ class Corpora:
                 if word not in thuocl_freq or freq > thuocl_freq[word]:
                     thuocl_freq[word] = freq
 
-        return essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars
+        return essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars, jieba_tags
 
 def poetry_paragraphs(doc):
-    """All paragraph strings of a 蒙学 JSON document, whatever its nesting
-    (唐诗三百首/千家诗 group by verse type, 增广贤文 by chapter)."""
+    """All paragraph strings of a poetry JSON document, whatever its
+    nesting: 蒙学 documents are dicts nested by chapter/verse type, the
+    Song ci / Shijing / Chuci files are lists of dicts with paragraphs or
+    content lists. Only plain strings inside 'paragraphs'/'content' count;
+    titles and abstracts are skipped."""
     paras = []
     def walk(node):
         if isinstance(node, dict):
-            if 'paragraphs' in node:
-                # Some anthologies nest objects inside paragraphs; only the
-                # plain strings are poem lines.
-                paras.extend(p for p in node['paragraphs']
-                             if isinstance(p, str))
+            for key in ('paragraphs', 'content'):
+                v = node.get(key)
+                if isinstance(v, list):
+                    paras.extend(p for p in v if isinstance(p, str))
             for v in node.values():
-                walk(v)
+                if isinstance(v, (dict, list)):
+                    walk(v)
         elif isinstance(node, list):
             for v in node:
-                walk(v)
-    walk(doc.get('content'))
+                if isinstance(v, (dict, list)):
+                    walk(v)
+    walk(doc)
     return paras
 
 def main():
@@ -412,7 +458,7 @@ def main():
     standard = corpora.standard_chars()
     phrase_pinyin = corpora.phrase_pinyin(trad_to_simp)
     luna_pinyin = corpora.luna_pinyin(trad_to_simp)
-    essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars = \
+    essay_freq, jieba_freq, thuocl_freq, jieba_geo_chars, jieba_tags = \
         corpora.word_freqs(trad_to_simp)
 
     # Map from simplified words back to their traditional spellings, used to
@@ -424,19 +470,21 @@ def main():
             if word and is_han(word):
                 simp_to_trad.setdefault(trad_to_simp(word), set()).add(word)
 
-    # Merge the frequency corpora on a common normalized scale. A word gets
-    # the maximum of its normalized scores so that being frequent in any
-    # corpus keeps it competitive.
+    # Merge the frequency corpora on a common normalized scale by summing
+    # the per-corpus scores (see normalize_freq). A word frequent in any
+    # corpus stays competitive; a word frequent in several accumulates, so
+    # one corpus' local artifact cannot invert the ranking of an everyday
+    # word against a rarer homophone.
     maxes = {}
     for name, d in (('essay', essay_freq), ('jieba', jieba_freq),
                     ('thuocl', thuocl_freq)):
         maxes[name] = max(d.values()) if d else 1
     def merged_freq(word):
-        return max(
-            normalize_freq(essay_freq.get(word, 0), maxes['essay']),
-            normalize_freq(jieba_freq.get(word, 0), maxes['jieba']),
-            normalize_freq(thuocl_freq.get(word, 0), maxes['thuocl']),
-        )
+        return min(
+            normalize_freq(essay_freq.get(word, 0), maxes['essay'])
+            + normalize_freq(jieba_freq.get(word, 0), maxes['jieba'])
+            + normalize_freq(thuocl_freq.get(word, 0), maxes['thuocl']),
+            FREQ_SCALE)
 
     # Frequency for single characters. THUOCL is a set of domain word
     # lists; its place-name list gives obscure geographic characters
@@ -444,10 +492,10 @@ def main():
     # excluded for characters. Words keep the full merge.
     def merged_freq_char(word):
         jieba = 0 if word in jieba_geo_chars else jieba_freq.get(word, 0)
-        return max(
-            normalize_freq(essay_freq.get(word, 0), maxes['essay']),
-            normalize_freq(jieba, maxes['jieba']),
-        )
+        return min(
+            normalize_freq(essay_freq.get(word, 0), maxes['essay'])
+            + normalize_freq(jieba, maxes['jieba']),
+            FREQ_SCALE)
 
     # simp_to_trad is built above, before this function is ever called.
     def get_word_pinyins(word):
@@ -510,8 +558,8 @@ def main():
     # list normalizes below the multi-char cut), so they are added here
     # explicitly, at DOMAIN_FLOOR when their natural frequency is lower.
     domain_added = 0
+    selected = set(w for w, _ in multi_words)
     if args.domain_words > 0:
-        selected = set(w for w, _ in multi_words)
         for domain, words in corpora.thuocl_lists():
             for word, raw_freq in words[:args.domain_words]:
                 if raw_freq < DOMAIN_MIN_FREQ or word in selected:
@@ -527,6 +575,16 @@ def main():
                         entries[key] = freq
                 selected.add(word)
                 domain_added += 1
+
+    # Everyday words the multi-char cut dropped: jieba counts them well
+    # above the noise floor but below the tail of the merged ranking. Most
+    # are classical/literary vocabulary (公卿, 尧舜, 用膳) that supports
+    # poetry and prose input; proper nouns are excluded by tag.
+    jieba_extra = [
+        w for w, f in sorted(jieba_freq.items(), key=lambda x: -x[1])
+        if (f >= JIEBA_EXTRA_MIN_FREQ and len(w) >= 2 and w not in selected
+            and jieba_tags.get(w, '') not in JIEBA_EXTRA_SKIP_TAGS)
+    ]
 
     # ---- force-included categories: idioms, poem lines, proverbs,
     # xiehouyu and curated extra lists ----
@@ -566,6 +624,7 @@ def main():
 
     add_category('poetry', corpora.poetry_lines(trad_to_simp), PHRASE_FLOOR)
     add_category('xiehouyu', corpora.xiehouyu(), PHRASE_FLOOR)
+    add_category('jieba-extra', jieba_extra, JIEBA_EXTRA_FLOOR)
 
     extra = corpora.extra_lists()
     for fname, (words, abbrs) in extra.items():
@@ -621,7 +680,11 @@ def main():
             '床前明月光': 'chuangqianmingyueguang',
             '锄禾日当午': 'chuheridangwu',
             '显眼包': 'xianyanbao', '遥遥领先': 'yaoyaolingxian',
-            '三天打鱼两天晒网': 'santiandayuliangtianshaiwang'}
+            '三天打鱼两天晒网': 'santiandayuliangtianshaiwang',
+            # Song ci / Shijing / Chuci coverage
+            '大江东去浪淘尽': 'dajiangdongqulangtaojin',
+            '问君能有几多愁': 'wenjunnengyoujiduochou',
+            '恰似一江春水向东流': 'qiasiyijiangchunshuixiangdongliu'}
     print("Verification:", file=sys.stderr)
     found = {(py, w) for (py, w), _ in sorted_entries}
     for w, expected in test.items():

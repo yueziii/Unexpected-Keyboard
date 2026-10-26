@@ -1076,10 +1076,14 @@ public final class KeyEventHandler
       accept_first_candidate();
       return;
     }
-    if (_pinyin_predictions != null && !_pinyin_predictions.isEmpty())
+    if (_pinyin_predictions != null)
     {
-      // Space accepts the first prediction, like mainstream IMEs.
-      suggestion_entered(_pinyin_predictions.get(0));
+      // Predictions (联想) are not conversion candidates for anything the
+      // user typed: they are only chosen by tapping or with the digit keys.
+      // Space types a space (mainstream IME behavior) and drops the now
+      // stale predictions.
+      clear_pinyin_predictions();
+      send_text(" ");
       return;
     }
     if (_space_bar_auto_complete && _suggestions.count > 0

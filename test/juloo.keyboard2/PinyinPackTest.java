@@ -60,11 +60,14 @@ public class PinyinPackTest
   }
 
   @Test
-  public void pack_is_larger_than_the_bundled_dictionary() throws Exception
+  public void bundled_dictionary_ships_the_extended_pack() throws Exception
   {
+    // The extended pack is bundled in the APK (the cloud update path moved
+    // to the hotwords overlay), so the two are the same build; the pack
+    // must never be smaller than the built-in dictionary.
     PinyinData data = load_first_pack();
     PinyinData bundled = PinyinDataTest.load_real_data();
-    assertTrue("cloud pack extends the built-in dictionary",
-        data.word_count() > bundled.word_count());
+    assertTrue("cloud pack >= the built-in dictionary",
+        data.word_count() >= bundled.word_count());
   }
 }

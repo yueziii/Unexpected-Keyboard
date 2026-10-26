@@ -30,6 +30,7 @@ import juloo.keyboard2.prefs.LayoutsPreference;
 import juloo.keyboard2.suggestions.CandidatesView;
 import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.pinyin.PinyinData;
+import juloo.keyboard2.pinyin.PinyinHotwords;
 import juloo.keyboard2.pinyin.PinyinUserDict;
 
 public class Keyboard2 extends InputMethodService
@@ -134,6 +135,8 @@ public class Keyboard2 extends InputMethodService
     // Pre-load the compiled pinyin dictionary and bigram model from assets
     // (py_dict.bin / py_bigram.bin, see scripts/gen_pinyin_bin.py).
     PinyinData.init(this);
+    // Load the cloud hotword overlay (云端热词), empty when none installed.
+    PinyinHotwords.init(this);
     // Load the user's learned pinyin words so queries can rank them first
     PinyinUserDict.init(this);
     Config.initGlobalConfig(prefs, getResources(),

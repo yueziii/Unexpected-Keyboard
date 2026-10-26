@@ -1,9 +1,6 @@
 package juloo.keyboard2;
 
 import juloo.keyboard2.pinyin.PinyinUserDict;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -12,10 +9,8 @@ import static org.junit.Assert.*;
 /**
  * Tests for the user pinyin frequency learning:
  * 1. Recording a committed word increases its usage count
- * 2. rank_by_user_usage promotes words the user committed before to the
- *    front, most used first
- * 3. Words never committed keep their dictionary (frequency) order
- * 4. Recording the pinyin preview or empty strings is ignored
+ * 2. Words never committed keep their dictionary (frequency) order
+ * 3. Recording the pinyin preview or empty strings is ignored
  */
 public class PinyinUserDictTest
 {
@@ -53,26 +48,13 @@ public class PinyinUserDictTest
   }
 
   @Test
-  public void used_words_rank_first_by_usage()
-  {
-    // Dictionary order: 你 (high freq), 便民, 民好 — user used 民好 twice
-    // and 便民 once, so they must both rank before 你, 民好 before 便民.
-    List<String> candidates = new ArrayList<String>(
-        Arrays.asList("你", "便民", "民好"));
-    PinyinUserDict.record("便民");
-    PinyinUserDict.record("民好");
-    PinyinUserDict.record("民好");
-    PinyinUserDict.rank_by_user_usage(candidates);
-    assertEquals(Arrays.asList("民好", "便民", "你"), candidates);
-  }
-
-  @Test
   public void unused_words_keep_dictionary_order()
   {
-    List<String> candidates = new ArrayList<String>(
-        Arrays.asList("甲", "乙", "丙"));
-    PinyinUserDict.rank_by_user_usage(candidates);
-    assertEquals(Arrays.asList("甲", "乙", "丙"), candidates);
+    // No ranking happens here anymore; committing only counts. The
+    // candidate reordering lives in PinyinEngine.rank_by_user_usage (see
+    // PinyinEngineTest.committed_word_ranks_first).
+    PinyinUserDict.record("你好");
+    assertEquals(1, PinyinUserDict.count("你好"));
   }
 
   @Test

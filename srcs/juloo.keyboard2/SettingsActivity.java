@@ -45,8 +45,8 @@ public class SettingsActivity extends PreferenceActivity
     findPreference("keyboard_height_unfolded").setEnabled(foldableDevice);
     findPreference("keyboard_height_landscape_unfolded").setEnabled(foldableDevice);
 
-    PinyinDictManager.bind_preference(this,
-        (ListPreference)findPreference("pinyin_dict_pack"));
+    PinyinDictManager.bind_hotwords_preference(this,
+        findPreference("pinyin_hotwords_update"));
 
     // Clearing the learned pinyin words asks for confirmation; the click
     // is otherwise not a preference change.

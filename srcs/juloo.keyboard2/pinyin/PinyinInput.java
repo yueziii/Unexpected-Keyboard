@@ -21,18 +21,23 @@ import juloo.keyboard2.suggestions.Suggestions;
  */
 public final class PinyinInput
 {
-  /** One candidate: the text to commit and how many buffer keystrokes it
-      consumes. The remaining keystrokes stay in the buffer for continued
-      input (整句输入: accept pieces of the sentence one after another). */
+  /** One candidate: the text to commit, how many buffer keystrokes it
+      consumes, and the word that precedes the cursor once it is committed
+      (the tail word of a sentence candidate — the bigram context for the
+      remaining buffer). The remaining keystrokes stay in the buffer for
+      continued input (整句输入: accept pieces of the sentence one after
+      another). */
   public static final class Candidate
   {
     public final String text;
     public final int keys_consumed;
+    public final String tail_word;
 
-    Candidate(String t, int keys)
+    Candidate(String t, int keys, String tail)
     {
       text = t;
       keys_consumed = keys;
+      tail_word = tail;
     }
   }
 
@@ -149,12 +154,12 @@ public final class PinyinInput
       return;
     }
     List<PinyinEngine.Candidate> decoded = PinyinEngine.decode(
-        PinyinData.get(), _letters, _context_word, PinyinUserDict.counts(),
-        PinyinUserDict.pinyins(), _abbrev);
+        PinyinData.get(), PinyinHotwords.get(), _letters, _context_word,
+        PinyinUserDict.counts(), PinyinUserDict.pinyins(), _abbrev);
     List<Candidate> candidates = new ArrayList<Candidate>();
     for (PinyinEngine.Candidate d : decoded)
       candidates.add(new Candidate(d.text,
-            keys_for_letters(d.letters_consumed)));
+            keys_for_letters(d.letters_consumed), d.tail_word));
     _candidates = candidates;
     compute_preview();
     publish();
@@ -173,7 +178,12 @@ public final class PinyinInput
       {
         _last_accepted_pinyin = consumed_pinyin_of(c);
         _buffer.delete(0, Math.min(c.keys_consumed, _buffer.length()));
-        _context_word = last_word_of(text);
+        // The tail word of the candidate precedes the cursor now; for a
+        // sentence candidate that is its last word, not the whole sentence,
+        // so the bigram context and the next-word prediction survive a
+        // whole-sentence commit.
+        _context_word = c.tail_word != null ? c.tail_word
+          : last_word_of(text);
         _letters = translate();
         _candidates = null;
         return c.keys_consumed;
@@ -376,8 +386,10 @@ public final class PinyinInput
     return count;
   }
 
-  /** For the bigram context: the last committed word is the tail of a
-      sentence candidate. */
+  /** Fallback for the bigram context when a candidate carries no tail
+      word: the last committed word is approximated by the text itself for
+      short candidates; longer texts simply won't match a dictionary word id
+      (neutral context). */
   private static String last_word_of(String text)
   {
     // A committed candidate may itself be a multi-word sentence; without

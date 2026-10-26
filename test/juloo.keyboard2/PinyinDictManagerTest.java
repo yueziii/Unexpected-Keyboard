@@ -60,6 +60,40 @@ public class PinyinDictManagerTest
         p.url("bigram"));
   }
 
+  // ---- hotwords section (云端热词) ----
+
+  static final String HOTWORDS = "{\n"
+    + "  \"format_version\": 2,\n"
+    + "  \"updated\": \"2026-10-25\",\n"
+    + "  \"packs\": [],\n"
+    + "  \"hotwords\": {\"path\": \"hotwords/2026-10-25/hotwords.tsv\",\n"
+    + "                \"sha256\": \"cc33\", \"bytes\": 7694,\n"
+    + "                \"count\": 307, \"date\": \"2026-10-25\"}\n"
+    + "}\n";
+
+  @Test
+  public void parse_hotwords_section() throws Exception
+  {
+    PinyinDictManager.HotwordsInfo hw =
+      PinyinDictManager.parse_hotwords(HOTWORDS);
+    assertEquals("hotwords/2026-10-25/hotwords.tsv", hw.path);
+    assertEquals("cc33", hw.sha256);
+    assertEquals(7694, hw.bytes);
+    assertEquals(307, hw.count);
+    assertEquals("2026-10-25", hw.date);
+    assertEquals(
+        "https://raw.githubusercontent.com/yueziii/Unexpected-Keyboard-pinyin-dictionaries/main/hotwords/2026-10-25/hotwords.tsv",
+        hw.url());
+  }
+
+  @Test
+  public void missing_hotwords_section_means_none() throws Exception
+  {
+    // Older repositories publish packs only; clients then stay on the
+    // built-in word list.
+    assertNull(PinyinDictManager.parse_hotwords(MANIFEST));
+  }
+
   @Test(expected = Exception.class)
   public void rejects_unsupported_manifest_version() throws Exception
   {

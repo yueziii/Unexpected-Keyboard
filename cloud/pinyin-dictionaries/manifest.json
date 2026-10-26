@@ -19,5 +19,12 @@
         "bytes": 309572
       }
     }
-  ]
+  ],
+  "hotwords": {
+    "path": "hotwords/2026-10-25/hotwords.tsv",
+    "sha256": "8324a2428750adb772dc2328d3d4ced9ed3a6e80f4236d87fc27d89b74144157",
+    "bytes": 7694,
+    "count": 307,
+    "date": "2026-10-25"
+  }
 }
