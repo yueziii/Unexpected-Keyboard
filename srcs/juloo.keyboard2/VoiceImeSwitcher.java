@@ -21,32 +21,8 @@ class VoiceImeSwitcher
   static final String PREF_LAST_USED = "voice_ime_last_used";
   static final String PREF_KNOWN_IMES = "voice_ime_known";
 
-  /** Switch to the voice ime. This might open a chooser popup. Preferences are
-      used to store the last selected voice ime and to detect whether the
-      chooser popup must be shown. Returns [false] if the detection failed and
-      is unlikely to succeed. */
-  public static boolean switch_to_voice_ime(InputMethodService ims,
-      InputMethodManager imm, SharedPreferences prefs)
-  {
-    List<IME> imes = get_voice_ime_list(imm);
-    String last_used = prefs.getString(PREF_LAST_USED, null);
-    String last_known_imes = prefs.getString(PREF_KNOWN_IMES, null);
-    IME last_used_ime = get_ime_by_id(imes, last_used);
-    if (imes.size() == 0)
-    {
-      // The chooser shows an explanatory message when the list is empty, this
-      // is the only feedback the user gets.
-      choose_voice_ime_and_update_prefs(ims, prefs, imes);
-      return false;
-    }
-    if (last_used == null || last_known_imes == null || last_used_ime == null
-        || !last_known_imes.equals(serialize_ime_ids(imes)))
-      choose_voice_ime_and_update_prefs(ims, prefs, imes);
-    else
-      switch_input_method(ims, last_used_ime);
-    return true;
-  }
-
+  /** Show the voice IME chooser popup and switch to the selected IME.
+      Preferences are updated so the choice is remembered. */
   public static boolean choose_voice_ime(InputMethodService ims,
       InputMethodManager imm, SharedPreferences prefs)
   {
@@ -87,15 +63,6 @@ class VoiceImeSwitcher
       ims.switchInputMethod(ime.get_id());
     else
       ims.switchInputMethod(ime.get_id(), ime.subtype);
-  }
-
-  static IME get_ime_by_id(List<IME> imes, String id)
-  {
-    if (id != null)
-      for (IME ime : imes)
-        if (ime.get_id().equals(id))
-          return ime;
-    return null;
   }
 
   static List<String> get_ime_display_names(InputMethodService ims, List<IME> imes)

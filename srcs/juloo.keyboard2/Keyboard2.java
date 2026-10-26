@@ -32,6 +32,7 @@ import juloo.keyboard2.suggestions.Suggestions;
 import juloo.keyboard2.pinyin.PinyinData;
 import juloo.keyboard2.pinyin.PinyinHotwords;
 import juloo.keyboard2.pinyin.PinyinUserDict;
+import juloo.keyboard2.voice.VoiceInputController;
 
 public class Keyboard2 extends InputMethodService
   implements SharedPreferences.OnSharedPreferenceChangeListener
@@ -147,6 +148,7 @@ public class Keyboard2 extends InputMethodService
     _keyeventhandler = new KeyEventHandler(recvr, _suggestions);
     KeyValue.Stateful._handler = recvr;
     _config.handler = _keyeventhandler;
+    VoiceInputController.init(this);
     prefs.registerOnSharedPreferenceChangeListener(this);
     Logs.set_debug_logs(getResources().getBoolean(R.bool.debug_logs));
     refreshSubtypeImm();
@@ -167,6 +169,7 @@ public class Keyboard2 extends InputMethodService
   public void onDestroy() {
     super.onDestroy();
 
+    VoiceInputController.abort();
     _foldStateTracker.close();
   }
 
@@ -496,6 +499,9 @@ public class Keyboard2 extends InputMethodService
   public void onFinishInputView(boolean finishingInput)
   {
     super.onFinishInputView(finishingInput);
+    // The keyboard is going away: stop any voice recording and release the
+    // microphone.
+    VoiceInputController.abort();
     _keyboard_layout_view.reset();
   }
 
@@ -653,12 +659,9 @@ public class Keyboard2 extends InputMethodService
           set_shift_state(true, true);
           break;
 
-        case SWITCH_VOICE_TYPING:
-          if (!VoiceImeSwitcher.switch_to_voice_ime(Keyboard2.this, get_imm(),
-                Config.globalPrefs()))
-            _config.shouldOfferVoiceTyping = false;
-          break;
-
+        // SWITCH_VOICE_TYPING (hold-to-talk in-app voice input) is handled
+        // in [KeyEventHandler], it never reaches the receiver. Switching to
+        // another voice IME remains possible through the chooser key.
         case SWITCH_VOICE_TYPING_CHOOSER:
           VoiceImeSwitcher.choose_voice_ime(Keyboard2.this, get_imm(),
               Config.globalPrefs());

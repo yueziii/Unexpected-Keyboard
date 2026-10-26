@@ -110,8 +110,9 @@ public final class KeyModifier
           case CHANGE_METHOD_PREV:
           case CHANGE_METHOD_NEXT:
             return KeyValue.CHANGE_METHOD;
-          case SWITCH_VOICE_TYPING:
-            return KeyValue.VOICE_TYPING_CHOOSER;
+          // The voice key is not remapped: holding it is hold-to-talk
+          // voice input, not a long-press. Switching to another voice IME
+          // is done through the voice_typing_chooser key or the settings.
         }
         break;
     }

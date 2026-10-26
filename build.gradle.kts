@@ -9,9 +9,14 @@ dependencies {
   // Following versions of androidx.window require sdk version 23
   implementation("androidx.window:window-java:1.4.0")
   implementation("androidx.core:core:1.16.0") // Version 1.17.0 available with sdk 36
+  // Offline voice input (hold-to-talk). The AAR is pinned from the
+  // official GitHub releases of sherpa-onnx; see libs/ for the version and
+  // its sha256. kotlin-stdlib is required by the sherpa Kotlin API classes.
+  implementation(files("libs/sherpa-onnx-2.0.0.aar"))
+  implementation("org.jetbrains.kotlin:kotlin-stdlib:2.1.21")
   testImplementation("junit:junit:4.13.2")
   // The manifest of the cloud dictionaries is parsed with org.json, which
-  // is only a stub in the android.jar used by local unit tests.
+  // is only a stub in the android.jar used for local unit tests.
   testImplementation("org.json:json:20240303")
 }
 
@@ -25,6 +30,11 @@ android {
     targetSdk { version = release(36) }
     versionCode = 55
     versionName = "2.0.4"
+    ndk {
+      // The sherpa-onnx AAR ships arm64-v8a, armeabi-v7a, x86 and x86_64
+      // native libraries; keep the two device ABIs out of the APK.
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+    }
   }
 
   sourceSets {
@@ -95,6 +105,14 @@ android {
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+  }
+
+  packaging {
+    jniLibs {
+      // Only the JNI API is used from the sherpa-onnx AAR; the C/C++ API
+      // libraries are not referenced and would only grow the APK.
+      excludes += setOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
+    }
   }
 }
 

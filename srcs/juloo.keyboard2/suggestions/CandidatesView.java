@@ -134,7 +134,11 @@ public class CandidatesView extends LinearLayout
       if (s.pinyin_preview != null)
       {
         _pinyin_preview_view.setVisibility(View.VISIBLE);
-        _pinyin_preview_view.setText(s.pinyin_preview);
+        // An empty preview is the voice-recording start state; show a
+        // listening placeholder instead of nothing.
+        _pinyin_preview_view.setText(s.pinyin_preview.length() == 0
+            ? getResources().getString(R.string.voice_listening)
+            : s.pinyin_preview);
         apply_text_size(_pinyin_preview_view);
       }
       else

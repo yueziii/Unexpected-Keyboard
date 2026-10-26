@@ -47,6 +47,8 @@ public class SettingsActivity extends PreferenceActivity
 
     PinyinDictManager.bind_hotwords_preference(this,
         findPreference("pinyin_hotwords_update"));
+    juloo.keyboard2.voice.VoiceModelManager.bind_preference(this,
+        (ListPreference)findPreference("voice_local_model"));
 
     // Clearing the learned pinyin words asks for confirmation; the click
     // is otherwise not a preference change.

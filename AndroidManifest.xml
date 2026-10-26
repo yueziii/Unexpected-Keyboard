@@ -4,6 +4,8 @@
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <!-- Hold-to-talk voice input with the offline recognition engine -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
   <!-- Floating keyboard overlay: draw the keyboard on top of other apps -->
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
@@ -36,6 +38,10 @@
         <action android:name="android.intent.action.MAIN"/>
       </intent-filter>
     </activity>
+
+    <!-- Transparent activity requesting the microphone permission; the IME
+         service cannot show a runtime permission dialog itself. -->
+    <activity android:name="juloo.keyboard2.voice.VoicePermissionActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true" android:noHistory="true" android:exported="false"/>
 
     <!-- Floating keyboard overlay: foreground service hosting the window -->
     <service android:name="juloo.keyboard2.OverlayKeyboardService" android:exported="false" android:foregroundServiceType="specialUse">

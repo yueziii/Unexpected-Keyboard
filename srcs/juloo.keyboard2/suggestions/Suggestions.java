@@ -115,6 +115,20 @@ public final class Suggestions
     _callback.set_suggestions(this);
   }
 
+  /** Hold-to-talk voice input is active: show [text] (the interim
+      transcript, or empty when the recording just started — the view then
+      shows a listening placeholder) as the bar's only content. */
+  public void voice_listening(String text)
+  {
+    pinyin_preview = text;
+    pinyin_candidates.clear();
+    count = 0;
+    for (int i = 0; i < MAX_COUNT; i++)
+      suggestions[i] = null;
+    emoji_suggestion = null;
+    _callback.set_suggestions(this);
+  }
+
   public void clear()
   {
     count = 0;

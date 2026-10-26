@@ -22,6 +22,7 @@ import juloo.keyboard2.pinyin.PinyinInput;
 import juloo.keyboard2.pinyin.PinyinPredictor;
 import juloo.keyboard2.pinyin.PinyinSchemes;
 import juloo.keyboard2.pinyin.PinyinUserDict;
+import juloo.keyboard2.voice.VoiceInputController;
 
 public final class KeyEventHandler
   implements Config.IKeyEventHandler,
@@ -166,6 +167,10 @@ public final class KeyEventHandler
   {
     if (key == null)
       return;
+    // Any key other than the mic key cancels an ongoing hold-to-talk
+    // recording (the pointer moved away from the mic key).
+    if (!VoiceInputController.is_mic_key(key))
+      VoiceInputController.key_interrupted();
     // Stop auto capitalisation when pressing some keys
     switch (key.getKind())
     {
@@ -187,6 +192,16 @@ public final class KeyEventHandler
         // is called after the trigger distance have been travelled.
         handle_slider(key.getSlider(), key.getSliderRepeat(), true);
         break;
+      case Event:
+        if (key.getEvent() == KeyValue.Event.SWITCH_VOICE_TYPING)
+        {
+          // Hold-to-talk: pressing the mic key starts voice input. Flush
+          // the pinyin buffer so the composing region is free for the
+          // interim transcript.
+          flush_pinyin();
+          VoiceInputController.mic_down();
+        }
+        break;
       default: break;
     }
   }
@@ -197,6 +212,10 @@ public final class KeyEventHandler
   {
     if (key == null)
       return;
+    // Like in [key_down]: any key other than the mic key cancels an
+    // ongoing recording (e.g. the pointer swiped away to another key).
+    if (!VoiceInputController.is_mic_key(key))
+      VoiceInputController.key_interrupted();
     _next_last_action = LastAction.OTHER;
     Pointers.Modifiers old_mods = _mods;
     update_meta_state(mods);
@@ -307,7 +326,19 @@ public final class KeyEventHandler
         }
         break;
       }
-      case Event: flush_pinyin(); _recv.handle_event_key(key.getEvent()); break;
+      case Event:
+        if (key.getEvent() == KeyValue.Event.SWITCH_VOICE_TYPING)
+        {
+          // Hold-to-talk: releasing the mic key stops the recording and
+          // commits the transcript.
+          VoiceInputController.mic_up();
+        }
+        else
+        {
+          flush_pinyin();
+          _recv.handle_event_key(key.getEvent());
+        }
+        break;
       case Keyevent:
         if (_pinyin != null && _pinyin.is_active()
             && key.getKeyevent() == KeyEvent.KEYCODE_ENTER)
@@ -544,6 +575,48 @@ public final class KeyEventHandler
   public void paste_from_clipboard_pane(String content)
   {
     send_text(content);
+  }
+
+  // Hold-to-talk voice input. The interim transcript is shown as composing
+  // text in the editor (like the pinyin preview) and in the candidates bar.
+
+  @Override
+  public void voice_started()
+  {
+    _suggestions.voice_listening("");
+    _recv.set_suggestions(_suggestions);
+  }
+
+  @Override
+  public void voice_partial(String text)
+  {
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (conn != null)
+      conn.setComposingText(text, 1);
+    _suggestions.voice_listening(text);
+  }
+
+  @Override
+  public void voice_final(String text)
+  {
+    _suggestions.clear();
+    _recv.set_suggestions(_suggestions);
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (text == null || text.isEmpty())
+    {
+      // Nothing recognized: drop the interim composing text.
+      if (conn != null)
+        conn.commitText("", 1);
+      return;
+    }
+    // send_text commits, which replaces the interim composing region.
+    send_text(text);
+    if (_pinyin != null)
+    {
+      // Continue the pinyin prediction (联想) from the spoken sentence.
+      _pinyin.set_context_word(text);
+      publish_pinyin_predictions();
+    }
   }
 
   @Override

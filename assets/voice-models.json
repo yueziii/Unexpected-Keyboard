@@ -1,0 +1,98 @@
+{
+  "format_version": 1,
+  "updated": "2026-10-25",
+  "models": [
+    {
+      "id": "zipformer-zh-14m-int8",
+      "name": "轻量档·中文流式",
+      "description": "流式 Zipformer 14M（int8）。体积最小，适合存储或内存紧张的设备；安静环境下普通话可用，嘈杂环境与口音识别一般。",
+      "type": "streaming_zipformer",
+      "sample_rate": 16000,
+      "feature_dim": 80,
+      "bytes": 25354625,
+      "files": [
+        {
+          "role": "encoder",
+          "path": "encoder-epoch-99-avg-1.int8.onnx",
+          "sha256": "1c556ea57cec304e55ec4b72e52c1cc098bb01476ed7d90f3de939fe126487b1",
+          "bytes": 21621684,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/encoder-epoch-99-avg-1.int8.onnx",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/encoder-epoch-99-avg-1.int8.onnx"
+          ]
+        },
+        {
+          "role": "decoder",
+          "path": "decoder-epoch-99-avg-1.int8.onnx",
+          "sha256": "22f123bb8cba9b38974b3df18a3f45e7081f4985ebb2e075d9f21f618c468bbf",
+          "bytes": 1888682,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/decoder-epoch-99-avg-1.int8.onnx",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/decoder-epoch-99-avg-1.int8.onnx"
+          ]
+        },
+        {
+          "role": "joiner",
+          "path": "joiner-epoch-99-avg-1.int8.onnx",
+          "sha256": "a7cf9d82757bdcf786059454495a9ca95e4bd7347f72473fc08d794475c36169",
+          "bytes": 1795562,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/joiner-epoch-99-avg-1.int8.onnx",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/joiner-epoch-99-avg-1.int8.onnx"
+          ]
+        },
+        {
+          "role": "tokens",
+          "path": "tokens.txt",
+          "sha256": "8b294db9045d6e5f94647f4c1eec1af4da143a75053c399611444b378ff966ac",
+          "bytes": 48697,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/tokens.txt",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main/tokens.txt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "paraformer-tri-zh-yue-en-int8",
+      "name": "标准档·普通话/粤语/英语流式",
+      "description": "阿里官方流式 Paraformer（int8），支持普通话、粤语、英语混说。识别质量高，推荐中高端机型使用。",
+      "type": "streaming_paraformer",
+      "sample_rate": 16000,
+      "feature_dim": 80,
+      "bytes": 238506638,
+      "files": [
+        {
+          "role": "encoder",
+          "path": "encoder.int8.onnx",
+          "sha256": "6047a644b41b236d9d8e89e3b94ef39d1b7037daab028131b722ca52e10b0357",
+          "bytes": 166362800,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/resolve/main/encoder.int8.onnx",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/resolve/main/encoder.int8.onnx"
+          ]
+        },
+        {
+          "role": "decoder",
+          "path": "decoder.int8.onnx",
+          "sha256": "545427acf508452b7d89969be082c8128c681e3432ff43aef09f6159f4b61a7e",
+          "bytes": 72062549,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/resolve/main/decoder.int8.onnx",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/resolve/main/decoder.int8.onnx"
+          ]
+        },
+        {
+          "role": "tokens",
+          "path": "tokens.txt",
+          "sha256": "45b31504211675dd52aa88f998a6f6161703a2834e86760c1cda645a22538085",
+          "bytes": 81289,
+          "urls": [
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/resolve/main/tokens.txt",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-trilingual-zh-cantonese-en/resolve/main/tokens.txt"
+          ]
+        }
+      ]
+    }
+  ]
+}

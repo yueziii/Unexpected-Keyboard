@@ -2,6 +2,7 @@ package juloo.keyboard2;
 
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.KeyEvent;
+import juloo.keyboard2.voice.VoiceInputController;
 
 /** Routes key events from the overlay keyboard's [Keyboard2View] to the
     focused editor of other apps through [OverlayAccessibilityService]. This
@@ -33,6 +34,12 @@ class OverlayInputHandler implements Config.IKeyEventHandler
   @Override
   public void key_down(KeyValue kv, boolean is_swipe)
   {
+    if (kv == null)
+      return;
+    if (VoiceInputController.is_mic_key(kv))
+      VoiceInputController.mic_down();
+    else
+      VoiceInputController.key_interrupted();
   }
 
   @Override
@@ -40,6 +47,8 @@ class OverlayInputHandler implements Config.IKeyEventHandler
   {
     if (kv == null)
       return;
+    if (!VoiceInputController.is_mic_key(kv))
+      VoiceInputController.key_interrupted();
     boolean ctrl = mods.has(KeyValue.Modifier.CTRL);
     switch (kv.getKind())
     {
@@ -56,7 +65,12 @@ class OverlayInputHandler implements Config.IKeyEventHandler
         break;
       case Keyevent: handle_keyevent(kv.getKeyevent(), ctrl); break;
       case Editing: handle_editing(kv.getEditing(), ctrl); break;
-      case Event: handle_event(kv.getEvent()); break;
+      case Event:
+        if (kv.getEvent() == KeyValue.Event.SWITCH_VOICE_TYPING)
+          VoiceInputController.mic_up();
+        else
+          handle_event(kv.getEvent());
+        break;
       case Modifier: break;
       case Compose_pending: _ui.set_compose_pending(true); break;
       case Slider: handle_slider(kv.getSlider(), kv.getSliderRepeat(), ctrl); break;
@@ -81,6 +95,27 @@ class OverlayInputHandler implements Config.IKeyEventHandler
   @Override
   public void suggestion_removed(String text)
   {
+  }
+
+  // Hold-to-talk voice input. The overlay keyboard has no candidates bar
+  // and accessibility node actions cannot set composing text, so only the
+  // final transcript is injected.
+
+  @Override
+  public void voice_started()
+  {
+  }
+
+  @Override
+  public void voice_partial(String text)
+  {
+  }
+
+  @Override
+  public void voice_final(String text)
+  {
+    if (text != null && !text.isEmpty())
+      OverlayAccessibilityService.commit_text(text);
   }
 
   /** PC-style Ctrl combos that accessibility node actions can express.

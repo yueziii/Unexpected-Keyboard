@@ -162,6 +162,16 @@
     <item>@string/pref_pinyin_scheme_full</item>
     <item>@string/pref_pinyin_scheme_double</item>
   </string-array>
+  <string-array name="pref_voice_engine_values">
+    <item>auto</item>
+    <item>local</item>
+    <item>system</item>
+  </string-array>
+  <string-array name="pref_voice_engine_entries">
+    <item>@string/pref_voice_engine_auto</item>
+    <item>@string/pref_voice_engine_local</item>
+    <item>@string/pref_voice_engine_system</item>
+  </string-array>
   <!-- 模糊音 groups; values must match PinyinData.FUZZY_RULES. -->
   <string-array name="pref_pinyin_fuzzy_values">
     <item>z_zh</item>

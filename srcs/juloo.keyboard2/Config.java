@@ -86,6 +86,9 @@ public final class Config
       text handling. Defaults to off because it changes behavior
       system-wide. */
   public boolean keyevent_compat = false;
+  /** Voice input engine selection: "auto" (offline model when installed,
+      else the system service), "system" or "local". */
+  public String voice_engine = "auto";
 
   // Dynamically set
   /** Configuration options implied by the connected editor. */
@@ -258,6 +261,7 @@ public final class Config
     space_bar_auto_complete = _prefs.getBoolean("space_bar_auto_complete", false);
     physical_keyboard_hide = _prefs.getString("physical_keyboard_behavior", "hide").equals("hide");
     keyevent_compat = _prefs.getBoolean("keyevent_compat", false);
+    voice_engine = _prefs.getString("voice_engine", "auto");
     float screen_width_dp = dm.widthPixels / dm.density;
     wide_screen = screen_width_dp >= WIDE_DEVICE_THRESHOLD;
     floating_keyboard = _prefs.getBoolean("floating_keyboard", false);
@@ -451,6 +455,14 @@ public final class Config
     /** The user long-pressed a candidate: forget what was learned about
         the word and refresh the candidates. */
     public void suggestion_removed(String text);
+    /** Hold-to-talk voice input started: show the listening state. */
+    public void voice_started();
+    /** Hold-to-talk voice input: interim transcript, shown as composing
+        text while the mic key is held. */
+    public void voice_partial(String text);
+    /** Hold-to-talk voice input finished (or failed): [text] is the final
+        transcript, possibly empty. Restores any listening state. */
+    public void voice_final(String text);
   }
 
   /** Config migrations. */

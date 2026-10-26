@@ -184,6 +184,7 @@ public class OverlayKeyboardService extends Service
         (int)(dm.density * 24));
     _nav_bar_height = system_bar_height("navigation_bar_height", 0);
     _input_handler = new OverlayInputHandler(this);
+    juloo.keyboard2.voice.VoiceInputController.init(this);
     _width_fraction = clamp_width_fraction(
         _prefs.getFloat(PREF_WIDTH_FRACTION, DEFAULT_WIDTH_FRACTION));
     int saved_height = _prefs.getInt(PREF_HEIGHT_PERCENT, -1);
@@ -221,6 +222,7 @@ public class OverlayKeyboardService extends Service
   @Override
   public void onDestroy()
   {
+    juloo.keyboard2.voice.VoiceInputController.abort();
     remove_window(_keyboard_root);
     _keyboard_root = null;
     remove_window(_bubble);
